@@ -118,7 +118,7 @@ jobs:
               | tee build-ps3/lua-protected-call-source.txt
           fi
           ninja -C build-ps3 -t commands \
-            | grep -E 'ldo\\.c.*(obj|o)( |$)' \
+            | grep -E 'ldo\.c.*(obj|o)( |$)' \
             | tee build-ps3/lua-ldo-compile-command.txt || true
 
       - name: Verify linked PPU ELF
