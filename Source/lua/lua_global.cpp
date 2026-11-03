@@ -113,10 +113,23 @@ void LuaPanic(const std::optional<std::string> &message)
 	    message.value_or("unknown error"));
 }
 
+#ifdef __PS3__
+struct LuaStateOwner {
+	lua_State *state = nullptr;
+
+	~LuaStateOwner()
+	{
+		if (state != nullptr)
+			lua_close(state);
+	}
+};
+#endif
+
 struct LuaState {
 #ifdef __PS3__
+	// Declared first so it is destroyed last, after all sol2 references.
+	LuaStateOwner owner;
 	LuaAllocatorStats allocatorStats;
-	lua_State *rawState = nullptr;
 	std::optional<sol::state_view> luaView;
 #else
 	sol::state luaState;
@@ -133,8 +146,8 @@ struct LuaState {
 	{
 #ifdef __PS3__
 		PS3LuaRawBootLog("Lua VM: lua_newstate begin");
-		rawState = lua_newstate(PS3LuaAllocator, &allocatorStats);
-		if (rawState == nullptr) {
+		owner.state = lua_newstate(PS3LuaAllocator, &allocatorStats);
+		if (owner.state == nullptr) {
 			PS3LuaRawBootLog("Lua VM: lua_newstate returned null");
 			PS3_LUA_BOOT_LOG(StrCat(
 			    "state allocation failed; calls=", allocatorStats.allocationCalls,
@@ -144,7 +157,7 @@ struct LuaState {
 			    ", failed request=", allocatorStats.lastFailedRequest));
 			return;
 		}
-		luaView.emplace(rawState);
+		luaView.emplace(owner.state);
 		luaView->set_panic(sol::c_call<decltype(&LuaPanic), &LuaPanic>);
 		PS3LuaRawBootLog("Lua VM: lua_newstate completed");
 		PS3_LUA_BOOT_LOG(StrCat(
@@ -153,15 +166,6 @@ struct LuaState {
 		    ", peak=", allocatorStats.peakBytes));
 #endif
 	}
-
-#ifdef __PS3__
-	~LuaState()
-	{
-		luaView.reset();
-		if (rawState != nullptr)
-			lua_close(rawState);
-	}
-#endif
 
 	sol::state_view &view()
 	{
