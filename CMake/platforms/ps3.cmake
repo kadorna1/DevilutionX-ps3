@@ -25,11 +25,13 @@ add_compile_definitions(
   # libstdc++'s std::filesystem implementation, which calls unavailable
   # fchmod in this SDK's static libstdc++ archive.
   DVL_NO_FILESYSTEM
-  _POSIX_C_SOURCE=200112L
 )
 
 # Console build: single-player, no desktop or online integrations.
 set(DISCORD_INTEGRATION OFF CACHE BOOL "" FORCE)
+# Demo-mode save-copy helpers require std::filesystem directory iteration.
+# The PS3 target uses the POSIX fallback, so omit this non-gameplay feature.
+set(DISABLE_DEMOMODE ON CACHE BOOL "" FORCE)
 set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
 set(ASAN OFF CACHE BOOL "" FORCE)
 set(UBSAN OFF CACHE BOOL "" FORCE)
