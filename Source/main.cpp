@@ -107,7 +107,9 @@ void InitializePS3Log()
 
 // Run before main(), so the log still exists if application initialization fails
 // before the normal entry point can install the SDL log callback.
-__attribute__((constructor(101))) void PS3EarlyLogConstructor()
+// PSL1GHT's __syscalls_init runs at constructor priority 104.
+// Run after it so Newlib fopen() has working LV2 filesystem callbacks.
+__attribute__((constructor(105))) void PS3EarlyLogConstructor()
 {
 	InitializePS3Log();
 	PS3WriteBootLog("pre-main constructor reached");
