@@ -210,17 +210,19 @@ extern void PS3LuaRawBootLogStatus(int status, int callbackReturned);
     _ps3_lua_do_content "${_ps3_lua_do_content}")
 
   # Mark the actual compile-time exception backend selected by Lua.
+  # Anchor this to luaD_rawrunprotected's status initialization, not to a
+  # diagnostic line that may differ across restored/incrementally patched trees.
   if(NOT _ps3_lua_do_content MATCHES "PS3 protected backend is ISO C longjmp")
     string(REPLACE
-      [=[  PS3_LUA_CORE_TRACE("Lua core: rawrunprotected handler installed");]=]
-      [=[#if defined(__cplusplus) && !defined(LUA_USE_LONGJMP)
+      [=[  lj.status = LUA_OK;]=]
+      [=[  lj.status = LUA_OK;
+#if defined(__cplusplus) && !defined(LUA_USE_LONGJMP)
   PS3_LUA_CORE_TRACE("Lua core: protected backend is C++ exceptions");
 #elif defined(LUA_USE_POSIX)
   PS3_LUA_CORE_TRACE("Lua core: protected backend is POSIX longjmp");
 #else
   PS3_LUA_CORE_TRACE("Lua core: protected backend is ISO C longjmp");
-#endif
-  PS3_LUA_CORE_TRACE("Lua core: rawrunprotected handler installed");]=]
+#endif]=]
       _ps3_lua_do_content "${_ps3_lua_do_content}")
   endif()
 
