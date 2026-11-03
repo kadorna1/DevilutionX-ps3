@@ -157,16 +157,18 @@ void InitializePS3Log()
 
 	// If no HDD/USB path can be opened, leave a TTY diagnostic for RPCS3,
 	// ethdebug, or a development host listening to PSL1GHT's TTY stream.
+	static const char ttyPrefix[] = "[PS3][BOOT] sysLv2FsOpen failed (result=";
 	for (unsigned int index = 0; index < sizeof(candidates) / sizeof(candidates[0]); ++index) {
-		PS3RawWriteToTty("[PS3][BOOT] sysLv2FsOpen failed (result=", 42);
+		PS3RawWriteToTty(ttyPrefix, sizeof(ttyPrefix) - 1);
 		char digits[16];
-		unsigned int number = openResults[index] < 0 ? static_cast<unsigned int>(-(openResults[index] + 1)) + 1 : static_cast<unsigned int>(openResults[index]);
+		const bool negative = openResults[index] < 0;
+		unsigned int number = negative ? static_cast<unsigned int>(-(openResults[index] + 1)) + 1 : static_cast<unsigned int>(openResults[index]);
 		unsigned int count = 0;
 		do {
 			digits[count++] = static_cast<char>('0' + number % 10);
 			number /= 10;
 		} while (number != 0 && count < sizeof(digits));
-		if (openResults[index] < 0)
+		if (negative)
 			PS3RawWriteToTty("-", 1);
 		while (count > 0) {
 			const char digit = digits[--count];
@@ -187,89 +189,6 @@ void InitializePS3Log()
 __attribute__((constructor(103))) void PS3EarlyLogConstructor()
 {
 	InitializePS3Log();
-}
-
-} // namespace
-#endif
-
-namespace {
-
-FILE *PS3LogFile = nullptr;
-const char *PS3LogPath = nullptr;
-
-void PS3WriteBootLog(const char *message)
-{
-	FILE *stream = PS3LogFile != nullptr ? PS3LogFile : stderr;
-	std::fprintf(stream, "[PS3][BOOT] %s\n", message != nullptr ? message : "");
-	std::fflush(stream);
-}
-
-void PS3LogOutput(void *, int category, SDL_LogPriority priority, const char *message)
-{
-	FILE *stream = PS3LogFile != nullptr ? PS3LogFile : stderr;
-	std::fprintf(stream, "[SDL][category=%d][priority=%d] %s\n", category, static_cast<int>(priority), message != nullptr ? message : "");
-	std::fflush(stream);
-}
-
-void InitializePS3Log()
-{
-	if (PS3LogFile != nullptr)
-		return;
-
-	// Try the installed title directory first, then independent HDD/USB locations.
-	// Some CFW/HEN setups allow reading USRDIR but deny creating files there.
-	static const char *const candidates[] = {
-	    "/dev_hdd0/game/" DEVILUTIONX_PS3_TITLE_ID "/USRDIR/devilutionx-ps3.log",
-	    "/dev_hdd0/tmp/devilutionx-ps3.log",
-	    "/dev_hdd0/game/" DEVILUTIONX_PS3_TITLE_ID "/devilutionx-ps3.log",
-	    "/dev_usb000/devilutionx-ps3.log",
-	    "devilutionx-ps3.log",
-	};
-	int openErrors[sizeof(candidates) / sizeof(candidates[0])] = {};
-
-	std::fflush(stdout);
-	std::fflush(stderr);
-
-	for (unsigned int index = 0; index < sizeof(candidates) / sizeof(candidates[0]); ++index) {
-		const char *candidate = candidates[index];
-		errno = 0;
-		FILE *file = std::fopen(candidate, "w");
-		if (file == nullptr) {
-			openErrors[index] = errno;
-			continue;
-		}
-
-		PS3LogFile = file;
-		PS3LogPath = candidate;
-		std::setvbuf(PS3LogFile, nullptr, _IONBF, 0);
-		PS3WriteBootLog("persistent log opened");
-
-		// Record earlier failures in the persistent log, rather than only on stderr.
-		for (unsigned int failedIndex = 0; failedIndex < index; ++failedIndex) {
-			if (openErrors[failedIndex] != 0) {
-				std::fprintf(PS3LogFile, "[PS3][BOOT] fopen failed: %s (errno=%d)\n", candidates[failedIndex], openErrors[failedIndex]);
-			}
-		}
-		PS3WriteBootLog(PS3LogPath);
-		std::fflush(PS3LogFile);
-		return;
-	}
-
-	for (unsigned int index = 0; index < sizeof(candidates) / sizeof(candidates[0]); ++index) {
-		std::fprintf(stderr, "[PS3][BOOT] fopen failed: %s (errno=%d)\n", candidates[index], openErrors[index]);
-	}
-	std::fprintf(stderr, "[PS3][BOOT] FATAL: unable to create a log in any candidate location.\n");
-	std::fflush(stderr);
-}
-
-// Run before main(), so the log still exists if application initialization fails
-// before the normal entry point can install the SDL log callback.
-// PSL1GHT's __syscalls_init runs at constructor priority 104.
-// Run after it so Newlib fopen() has working LV2 filesystem callbacks.
-__attribute__((constructor(105))) void PS3EarlyLogConstructor()
-{
-	InitializePS3Log();
-	PS3WriteBootLog("pre-main constructor reached");
 }
 
 } // namespace
