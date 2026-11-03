@@ -28,6 +28,40 @@ FetchContent_Declare_ExcludeFromAll(Lua
 )
 FetchContent_MakeAvailable_ExcludeFromAll(Lua)
 
+# PS3-only Lua startup tracing. Patch the fetched Lua 5.4.7 source in the
+# build tree so we can identify which stage of lua_newstate() stops.
+if(CMAKE_SYSTEM_NAME STREQUAL "PS3")
+  set(_ps3_lua_state_source "${lua_SOURCE_DIR}/lua-5.4.7/src/lstate.c")
+  if(NOT EXISTS "${_ps3_lua_state_source}")
+    message(FATAL_ERROR "Could not find fetched Lua source: ${_ps3_lua_state_source}")
+  endif()
+
+  file(READ "${_ps3_lua_state_source}" _ps3_lua_state_content)
+  if(NOT _ps3_lua_state_content MATCHES "PS3 Lua startup trace")
+    string(REPLACE
+      "#include \"lstring.h\""
+      "#include \"lstring.h\"\n\n#ifdef __PS3__\nextern void PS3LuaRawBootLogNoSync(const char *message);\n#define PS3_LUA_CORE_TRACE(message) PS3LuaRawBootLogNoSync(message)\n#else\n#define PS3_LUA_CORE_TRACE(message) ((void)0)\n#endif /* PS3 Lua startup trace */"
+      _ps3_lua_state_content "${_ps3_lua_state_content}")
+
+    string(REPLACE
+      "static void f_luaopen (lua_State *L, void *ud) {\n  global_State *g = G(L);\n  UNUSED(ud);\n  stack_init(L, L);  /* initialize stack */\n  init_registry(L, g);\n  luaS_init(L);\n  luaT_init(L);\n  luaX_init(L);\n  g->gcstp = 0;  /* allow gc */\n  setnilvalue(&g->nilvalue);  /* now state is complete */\n  luai_userstateopen(L);\n}"
+      "static void f_luaopen (lua_State *L, void *ud) {\n  global_State *g = G(L);\n  UNUSED(ud);\n  PS3_LUA_CORE_TRACE(\"Lua core: f_luaopen entered\");\n  stack_init(L, L);  /* initialize stack */\n  PS3_LUA_CORE_TRACE(\"Lua core: stack_init complete\");\n  init_registry(L, g);\n  PS3_LUA_CORE_TRACE(\"Lua core: init_registry complete\");\n  luaS_init(L);\n  PS3_LUA_CORE_TRACE(\"Lua core: luaS_init complete\");\n  luaT_init(L);\n  PS3_LUA_CORE_TRACE(\"Lua core: luaT_init complete\");\n  luaX_init(L);\n  PS3_LUA_CORE_TRACE(\"Lua core: luaX_init complete\");\n  g->gcstp = 0;  /* allow gc */\n  PS3_LUA_CORE_TRACE(\"Lua core: GC enabled\");\n  setnilvalue(&g->nilvalue);  /* now state is complete */\n  PS3_LUA_CORE_TRACE(\"Lua core: state marked complete\");\n  luai_userstateopen(L);\n  PS3_LUA_CORE_TRACE(\"Lua core: f_luaopen returning\");\n}"
+      _ps3_lua_state_content "${_ps3_lua_state_content}")
+
+    string(REPLACE
+      "  if (luaD_rawrunprotected(L, f_luaopen, NULL) != LUA_OK) {\n    /* memory allocation error: free partial state */\n    close_state(L);\n    L = NULL;\n  }\n  return L;"
+      "  PS3_LUA_CORE_TRACE(\"Lua core: protected f_luaopen begin\");\n  const int init_status = luaD_rawrunprotected(L, f_luaopen, NULL);\n  PS3_LUA_CORE_TRACE(init_status == LUA_OK ? \"Lua core: protected f_luaopen returned LUA_OK\" : \"Lua core: protected f_luaopen returned error\");\n  if (init_status != LUA_OK) {\n    /* memory allocation error: free partial state */\n    close_state(L);\n    L = NULL;\n    PS3_LUA_CORE_TRACE(\"Lua core: partial state cleanup complete\");\n  }\n  PS3_LUA_CORE_TRACE(L != NULL ? \"Lua core: lua_newstate returning valid state\" : \"Lua core: lua_newstate returning null state\");\n  return L;"
+      _ps3_lua_state_content "${_ps3_lua_state_content}")
+
+    if(NOT _ps3_lua_state_content MATCHES "Lua core: luaX_init complete" OR
+       NOT _ps3_lua_state_content MATCHES "Lua core: protected f_luaopen begin")
+      message(FATAL_ERROR "Failed to apply PS3 Lua startup trace patch")
+    endif()
+
+    file(WRITE "${_ps3_lua_state_source}" "${_ps3_lua_state_content}")
+  endif()
+endif()
+
 # Needed for sol2
 set(LUA_VERSION_STRING "5.4.7" PARENT_SCOPE)
 
