@@ -157,9 +157,11 @@ struct LuaState {
 			    ", failed request=", allocatorStats.lastFailedRequest));
 			return;
 		}
+		PS3LuaRawBootLog("Lua VM: lua_newstate returned valid state");
 		luaView.emplace(owner.state);
+		PS3LuaRawBootLog("Lua VM: sol2 state_view construction completed");
 		luaView->set_panic(sol::c_call<decltype(&LuaPanic), &LuaPanic>);
-		PS3LuaRawBootLog("Lua VM: lua_newstate completed");
+		PS3LuaRawBootLog("Lua VM: panic handler registered");
 		PS3_LUA_BOOT_LOG(StrCat(
 		    "state allocation complete; calls=", allocatorStats.allocationCalls,
 		    ", live=", allocatorStats.liveBytes,
