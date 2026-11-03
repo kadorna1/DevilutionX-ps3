@@ -20,6 +20,12 @@ set(DEVILUTIONX_DISPLAY_TEXTURE_FORMAT SDL_PIXELFORMAT_ARGB8888 CACHE STRING "PS
 add_compile_definitions(
   __PS3__
   DEVILUTIONX_PS3_TITLE_ID="${DEVILUTIONX_PS3_TITLE_ID}"
+  # PSL1GHT/Newlib provides POSIX file and directory operations through
+  # startup-initialized LV2 syscall callbacks. Use those APIs instead of
+  # libstdc++'s std::filesystem implementation, which calls unavailable
+  # fchmod in this SDK's static libstdc++ archive.
+  DVL_NO_FILESYSTEM
+  _POSIX_C_SOURCE=200112L
 )
 
 # Console build: single-player, no desktop or online integrations.
