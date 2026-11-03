@@ -48,7 +48,6 @@ find_tool() {
 [[ -f "$SFO_XML" ]] || die "PS3 SFO template not found: $SFO_XML"
 
 STRIP="$(find_tool ppu-strip)" || die "ppu-strip not found"
-SPRX="$(find_tool sprxlinker)" || die "sprxlinker not found"
 SELF="$(find_tool make_self_npdrm)" || die "make_self_npdrm not found"
 # Prefer the bundled Python helpers, but retry alternatives if their
 # runtime/dependencies are unavailable in the builder image.
@@ -73,9 +72,24 @@ mkdir -p "$PKGDIR/USRDIR" "$OUT_DIR"
 
 echo "Preparing PS3 SELF..."
 "$STRIP" --strip-all "$ELF" -o "$WORK/devilutionx.stripped.elf"
-"$SPRX" "$WORK/devilutionx.stripped.elf"
+# The linked main application is a normal PS3 executable, not an SPRX module.
+# sprxlinker requires the PRX-only .sys_proc_prx_param section, which the
+# application ELF intentionally does not contain. make_self_npdrm consumes
+# the executable ELF directly and creates the EBOOT.BIN SELF wrapper.
 "$SELF" "$WORK/devilutionx.stripped.elf" "$PKGDIR/USRDIR/EBOOT.BIN" "$CONTENT_ID"
 [[ -s "$PKGDIR/USRDIR/EBOOT.BIN" ]] || die "make_self_npdrm did not produce EBOOT.BIN"
+
+echo "Verifying SELF header..."
+python3 - "$PKGDIR/USRDIR/EBOOT.BIN" <<'PY'
+from pathlib import Path
+import sys
+p = Path(sys.argv[1])
+with p.open("rb") as f:
+    magic = f.read(9)
+if magic != b"SCE\0\0\0\0\x02\x80":
+    raise SystemExit(f"unexpected EBOOT.BIN SELF header: {magic.hex()}")
+print(f"SELF OK: {p.stat().st_size} bytes")
+PY
 
 # Ship DevilutionX's own redistributable engine assets, but never original
 # Diablo/Hellfire game data.
@@ -111,6 +125,16 @@ for candidate in "${SFO_CANDIDATES[@]}"; do
 done
 [[ "$sfo_ok" -eq 1 ]] || die "no SFO tool could create PARAM.SFO"
 
+echo "Verifying PARAM.SFO..."
+python3 - "$PKGDIR/PARAM.SFO" <<'PY'
+from pathlib import Path
+import sys
+p = Path(sys.argv[1])
+if p.read_bytes()[:4] != b"\0PSF":
+    raise SystemExit("PARAM.SFO has an invalid PSF header")
+print(f"PARAM.SFO OK: {p.stat().st_size} bytes")
+PY
+
 OUT_PKG="$OUT_DIR/devilutionx-ps3.pkg"
 echo "Creating $OUT_PKG..."
 pkg_ok=0
@@ -139,5 +163,23 @@ if [[ -n "$FINALIZER" ]]; then
   "$FINALIZER" "$OUT_FINAL"
   echo "Created $OUT_FINAL"
 fi
+
+echo "Verifying PKG headers and content IDs..."
+python3 - "$CONTENT_ID" "$OUT_PKG" "$OUT_FINAL" <<'PY'
+from pathlib import Path
+import sys
+expected = sys.argv[1].encode("ascii")
+for arg in sys.argv[2:]:
+    if not arg:
+        continue
+    p = Path(arg)
+    data = p.read_bytes()
+    if len(data) < 0x80 or data[:4] != b"\x7fPKG":
+        raise SystemExit(f"invalid PKG header: {p}")
+    content_id = data[0x30:0x60].split(b"\0", 1)[0]
+    if content_id != expected:
+        raise SystemExit(f"wrong PKG content ID in {p}: {content_id!r}")
+    print(f"PKG OK: {p.name} ({len(data)} bytes, {content_id.decode()})")
+PY
 
 ls -lh "$OUT_PKG" ${OUT_FINAL:+"$OUT_FINAL"}
