@@ -64,6 +64,10 @@ The repository keeps PS3 XMB media in `assets/xmb/`. The generated package place
 
 `LOGO0.PNG` is retained in the repository but is unused and is not copied into the PKG.
 
+## PS3 ELF finalization
+
+Before creating `EBOOT.BIN`, the packaging script runs PSL1GHT's `sprxlinker` on the stripped PPU executable. This is part of the normal PSL1GHT application pipeline: it marks the executable with the Cell LV2 ELF OSABI, repairs import-stub counts, and fixes PPU function descriptors. Packaging stops unless the result is a 64-bit big-endian PowerPC executable with `ELFOSABI_CELLLV2` (102).
+
 ## Startup log
 
 The PS3 executable declares its process priority and 1 MiB main-thread stack with PSL1GHT's `SYS_PROCESS_PARAM` metadata. The linker explicitly retains `__sys_process_param` so the Release build's section garbage collection cannot discard the loader record.
