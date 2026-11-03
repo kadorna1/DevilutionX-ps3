@@ -51,6 +51,10 @@ if(NINTENDO_3DS)
   include(platforms/n3ds)
 endif()
 
+if(CMAKE_SYSTEM_NAME STREQUAL "PS3" OR PS3)
+  include(platforms/ps3)
+endif()
+
 if(VITA)
   include("$ENV{VITASDK}/share/vita.cmake" REQUIRED)
   include(platforms/vita)
