@@ -1,0 +1,113 @@
+name: PS3 / PSL1GHT Build
+
+on:
+  push:
+    branches:
+      - ps3-port
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-ps3:
+    name: Build DevilutionX for PS3
+    runs-on: ubuntu-24.04
+    container:
+      image: hldtux/ps3dev-sdl2:latest
+    timeout-minutes: 90
+    env:
+      PS3DEV: /usr/local/ps3dev
+      PSL1GHT: /usr/local/ps3dev
+      CCACHE_DIR: ${{ github.workspace }}/.cache/ccache
+      CCACHE_MAXSIZE: 2G
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install host build tools
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            cmake ninja-build gettext ccache python3 file
+          rm -rf /var/lib/apt/lists/*
+
+      - name: Verify PS3 SDK and SDL2
+        run: |
+          set -euo pipefail
+          test -x "$PS3DEV/ppu/bin/ppu-gcc"
+          test -x "$PS3DEV/ppu/bin/ppu-g++"
+          command -v sdl2-config
+          ppu-gcc --version | head -n 1
+          ppu-g++ --version | head -n 1
+          sdl2-config --version
+          mkdir -p build-ps3
+          {
+            echo "PS3DEV=$PS3DEV"
+            echo "SDL2=$(sdl2-config --version)"
+            ppu-g++ --version | head -n 1
+            sdl2-config --cflags
+            sdl2-config --libs
+          } | tee build-ps3/ps3-sdk-info.txt
+
+      - name: Restore compiler cache
+        uses: actions/cache@v4
+        with:
+          path: .cache/ccache
+          key: devilutionx-ps3-ccache-${{ runner.os }}-${{ github.head_ref || github.ref_name }}-${{ github.sha }}
+          restore-keys: |
+            devilutionx-ps3-ccache-${{ runner.os }}-${{ github.head_ref || github.ref_name }}-
+            devilutionx-ps3-ccache-${{ runner.os }}-
+
+      - name: Restore CMake/Ninja build tree
+        uses: actions/cache@v4
+        with:
+          path: build-ps3
+          key: devilutionx-ps3-build-v1-${{ runner.os }}-${{ hashFiles('CMake/ps3-psl1ght.cmake', 'CMake/Platform/PS3.cmake', 'CMake/platforms/ps3.cmake') }}-${{ github.head_ref || github.ref_name }}-${{ github.sha }}
+          restore-keys: |
+            devilutionx-ps3-build-v1-${{ runner.os }}-${{ hashFiles('CMake/ps3-psl1ght.cmake', 'CMake/Platform/PS3.cmake', 'CMake/platforms/ps3.cmake') }}-${{ github.head_ref || github.ref_name }}-
+            devilutionx-ps3-build-v1-${{ runner.os }}-${{ hashFiles('CMake/ps3-psl1ght.cmake', 'CMake/Platform/PS3.cmake', 'CMake/platforms/ps3.cmake') }}-
+
+      - name: Configure ccache and restore incremental timestamps
+        run: |
+          set -euo pipefail
+          mkdir -p "$CCACHE_DIR"
+          ccache --set-config=compiler_check=content
+          ccache --max-size="$CCACHE_MAXSIZE"
+          python3 Packaging/ps3/incremental.py prepare build-ps3
+          ccache --show-stats
+
+      - name: Configure and compile
+        run: |
+          set -euo pipefail
+          bash Packaging/ps3/build.sh --build-only build-ps3
+
+      - name: Record source hashes and compiler statistics
+        if: success()
+        run: |
+          python3 Packaging/ps3/incremental.py record build-ps3
+          ccache --show-stats | tee build-ps3/ccache-stats.txt
+
+      - name: Create PS3 PKG
+        run: |
+          bash Packaging/ps3/make_pkg.sh build-ps3
+
+      - name: Upload PS3 packages and build metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: devilutionx-ps3
+          path: |
+            build-ps3/devilutionx-ps3.pkg
+            build-ps3/devilutionx-ps3-gnpdrm.pkg
+            build-ps3/ps3-sdk-info.txt
+            build-ps3/ccache-stats.txt
+          if-no-files-found: warn
