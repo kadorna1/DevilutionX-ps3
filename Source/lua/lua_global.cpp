@@ -67,9 +67,41 @@ struct LuaAllocatorStats {
 	size_t calls = 0;
 };
 
-// Mirrors Lua 5.4.7's luaL_newstate allocator (free/realloc), adding only
-// no-fsync checkpoints around the first allocations to locate the stall.
-void *PS3LuaAllocator(void *userData, void *pointer, size_t /*oldSize*/, size_t newSize)
+void AppendLuaAllocatorNumber(char *buffer, size_t &position, size_t value)
+{
+	char digits[3 * sizeof(size_t)];
+	size_t count = 0;
+	do {
+		digits[count++] = static_cast<char>('0' + value % 10);
+		value /= 10;
+	} while (value != 0);
+	while (count != 0)
+		buffer[position++] = digits[--count];
+}
+
+void LogLuaAllocatorCall(size_t call, size_t oldSize, size_t newSize, const char *stage)
+{
+	char message[128];
+	size_t position = 0;
+	const auto append = [&](const char *text) {
+		while (*text != '\0')
+			message[position++] = *text++;
+	};
+	append("Lua allocator #");
+	AppendLuaAllocatorNumber(message, position, call);
+	append(" old=");
+	AppendLuaAllocatorNumber(message, position, oldSize);
+	append(" new=");
+	AppendLuaAllocatorNumber(message, position, newSize);
+	append(" ");
+	append(stage);
+	message[position] = '\0';
+	PS3LuaRawBootLogNoSync(message);
+}
+
+// Mirrors Lua 5.4.7's stock allocator. The numbered checkpoints include all
+// allocation sizes and bracket each realloc without doing an fsync in Lua.
+void *PS3LuaAllocator(void *userData, void *pointer, size_t oldSize, size_t newSize)
 {
 	auto *stats = static_cast<LuaAllocatorStats *>(userData);
 	if (newSize == 0) {
@@ -78,13 +110,14 @@ void *PS3LuaAllocator(void *userData, void *pointer, size_t /*oldSize*/, size_t 
 	}
 
 	const size_t call = ++stats->calls;
-	if (call <= 16)
-		PS3LuaRawBootLogNoSync("Lua allocator: realloc begin");
+	if (call <= 64)
+		LogLuaAllocatorCall(call, oldSize, newSize, "realloc begin");
+	else if (call == 65)
+		PS3LuaRawBootLogNoSync("Lua allocator trace limit reached (64 calls)");
 	void *const result = std::realloc(pointer, newSize);
-	if (call <= 16)
-		PS3LuaRawBootLogNoSync(result != nullptr
-		        ? "Lua allocator: realloc returned non-null"
-		        : "Lua allocator: realloc returned null");
+	if (call <= 64)
+		LogLuaAllocatorCall(call, oldSize, newSize,
+		    result != nullptr ? "realloc returned non-null" : "realloc returned null");
 	return result;
 }
 #endif
