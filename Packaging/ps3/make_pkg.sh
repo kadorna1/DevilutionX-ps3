@@ -83,7 +83,7 @@ import struct
 import sys
 
 elf = Path(sys.argv[1]).read_bytes()
-if len(elf) < 64 or elf[:4] != b"\\x7fELF":
+if len(elf) < 64 or elf[:4] != b"\x7fELF":
     raise SystemExit("sprxlinker output is not a valid ELF")
 if (elf[4], elf[5], elf[7]) != (2, 2, 102):
     raise SystemExit(
