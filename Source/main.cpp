@@ -30,6 +30,11 @@
 #ifdef __PS3__
 #include <ppu-lv2.h>
 #include <lv2/sysfs.h>
+#include <sys/process.h>
+
+// Declare the process priority and main-thread stack expected by the PS3 loader.
+// The linker configuration below preserves this record in Release builds.
+SYS_PROCESS_PARAM(1001, 0x100000);
 
 #ifndef DEVILUTIONX_PS3_TITLE_ID
 #define DEVILUTIONX_PS3_TITLE_ID "DEVILUT00"
@@ -57,12 +62,6 @@ s32 PS3SysLv2FsFsync(s32 fd)
 	return_to_user_prog(s32);
 }
 
-s32 PS3SysTtyWrite(s32 channel, const void *ptr, u32 length, u32 *written)
-{
-	lv2syscall4(403, channel, (u64)ptr, length, (u64)written);
-	return_to_user_prog(s32);
-}
-
 void PS3RawWriteToFd(s32 fd, const char *text, u64 length)
 {
 	if (fd < 0 || text == nullptr)
@@ -77,30 +76,10 @@ void PS3RawWriteToFd(s32 fd, const char *text, u64 length)
 	}
 }
 
-void PS3RawWriteToTty(const char *text, u32 length)
-{
-	if (text == nullptr || length == 0)
-		return;
-	while (length > 0) {
-		u32 written = 0;
-		const s32 result = PS3SysTtyWrite(0, text, length, &written);
-		if (result != 0 || written == 0)
-			return;
-		text += written;
-		length -= written;
-	}
-}
-
 void PS3RawWrite(const char *text, u64 length)
 {
+	// Diagnostics are written only to the console HDD or mounted USB storage.
 	PS3RawWriteToFd(PS3LogFd, text, length);
-	// Keep a live TTY copy even when a persistent file opens successfully.
-	while (length > 0) {
-		const u32 chunk = length > 0xFFFFFFFFULL ? 0xFFFFFFFFU : static_cast<u32>(length);
-		PS3RawWriteToTty(text, chunk);
-		text += chunk;
-		length -= chunk;
-	}
 }
 
 void PS3RawWrite(const char *text)
@@ -161,9 +140,6 @@ void InitializePS3Log()
 		return;
 
 	// Bypass Newlib entirely: these wrappers issue LV2 syscalls directly.
-	static const char startupMarker[] = "[PS3][BOOT] logger constructor reached\n";
-	PS3RawWriteToTty(startupMarker, sizeof(startupMarker) - 1);
-
 	static const char *const candidates[] = {
 	    "/dev_hdd0/game/" DEVILUTIONX_PS3_TITLE_ID "/USRDIR/devilutionx-ps3.log",
 	    "/dev_hdd0/tmp/devilutionx-ps3.log",
@@ -174,7 +150,6 @@ void InitializePS3Log()
 	    "/dev_usb003/devilutionx-ps3.log",
 	    "/dev_usb004/devilutionx-ps3.log",
 	    "/dev_usb005/devilutionx-ps3.log",
-	    "devilutionx-ps3.log",
 	};
 	s32 openResults[sizeof(candidates) / sizeof(candidates[0])] = {};
 
@@ -203,32 +178,7 @@ void InitializePS3Log()
 		return;
 	}
 
-	// If no HDD/USB path can be opened, leave a TTY diagnostic for RPCS3,
-	// ethdebug, or a development host listening to PSL1GHT's TTY stream.
-	static const char ttyPrefix[] = "[PS3][BOOT] sysLv2FsOpen failed (result=";
-	for (unsigned int index = 0; index < sizeof(candidates) / sizeof(candidates[0]); ++index) {
-		PS3RawWriteToTty(ttyPrefix, sizeof(ttyPrefix) - 1);
-		char digits[16];
-		const bool negative = openResults[index] < 0;
-		unsigned int number = negative ? static_cast<unsigned int>(-(openResults[index] + 1)) + 1 : static_cast<unsigned int>(openResults[index]);
-		unsigned int count = 0;
-		do {
-			digits[count++] = static_cast<char>('0' + number % 10);
-			number /= 10;
-		} while (number != 0 && count < sizeof(digits));
-		if (negative)
-			PS3RawWriteToTty("-", 1);
-		while (count > 0) {
-			const char digit = digits[--count];
-			PS3RawWriteToTty(&digit, 1);
-		}
-		PS3RawWriteToTty(") path=", 7);
-		u64 pathLength = 0;
-		while (candidates[index][pathLength] != '\0')
-			++pathLength;
-		PS3RawWriteToTty(candidates[index], static_cast<u32>(pathLength));
-		PS3RawWriteToTty("\n", 1);
-	}
+
 }
 
 // Priority 103 runs before PSL1GHT's priority-104 Newlib registration.
