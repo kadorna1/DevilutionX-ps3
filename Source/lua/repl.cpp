@@ -57,7 +57,7 @@ void CreateReplEnvironment()
 sol::protected_function_result TryRunLuaAsExpressionThenStatement(std::string_view code)
 {
 	// Try to compile as an expression first. This also how the `lua` repl is implemented.
-	sol::state &lua = GetLuaState();
+	sol::state_view &lua = GetLuaState();
 	std::string expression = StrCat("return ", code, ";");
 	sol::detail::typical_chunk_name_t basechunkname = {};
 	sol::load_status status = static_cast<sol::load_status>(
