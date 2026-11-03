@@ -51,6 +51,12 @@
 
 namespace devilution {
 
+#ifdef __PS3__
+#define PS3_LUA_BOOT_LOG(message) LogInfo("PS3 boot: Lua: {}", message)
+#else
+#define PS3_LUA_BOOT_LOG(message) ((void)0)
+#endif
+
 namespace {
 
 void LuaPanic(const std::optional<std::string> &message)
@@ -97,6 +103,7 @@ end
 
 sol::object LuaLoadScriptFromAssets(std::string_view packageName)
 {
+	PS3_LUA_BOOT_LOG(StrCat("script asset loading begin: ", packageName));
 	if (!CurrentLuaState.has_value()) {
 		app_fatal("Lua state is not initialized");
 	}
@@ -115,6 +122,7 @@ sol::object LuaLoadScriptFromAssets(std::string_view packageName)
 
 	std::expected<AssetData, std::string> assetData = LoadIntegralAsset(path);
 	if (!assetData.has_value()) {
+		PS3_LUA_BOOT_LOG(StrCat("script asset loading failed: ", path, ": ", assetData.error()));
 		sol::stack::push(luaState.sol.lua_state(), assetData.error());
 		return sol::stack_object(luaState.sol.lua_state(), -1);
 	}
@@ -125,7 +133,9 @@ sol::object LuaLoadScriptFromAssets(std::string_view packageName)
 		return sol::stack_object(luaState.sol.lua_state(), -1);
 	}
 	const sol::function fn = result;
+	PS3_LUA_BOOT_LOG(StrCat("script bytecode compilation begin: ", path));
 	luaState.compiledScripts[path] = fn.dump();
+	PS3_LUA_BOOT_LOG(StrCat("script asset loading complete: ", path));
 	return result;
 }
 
@@ -239,35 +249,51 @@ void AddModsChangedHandler(tl::function_ref<void()> callback)
 
 void LuaReloadActiveMods()
 {
+	PS3_LUA_BOOT_LOG("active-mod reload begin");
 	// Loaded without a sandbox.
+	PS3_LUA_BOOT_LOG("loading devilutionx.events begin");
 	CurrentLuaState->events = RunScript(/*env=*/std::nullopt, "devilutionx.events", /*optional=*/false);
+	PS3_LUA_BOOT_LOG("loading devilutionx.events complete");
 	CurrentLuaState->commonPackages["devilutionx.events"] = CurrentLuaState->events;
 
 	ClearTownerDialogOptions();
 
 	gbIsHellfire = false;
+	PS3_LUA_BOOT_LOG("unloading mod archives begin");
 	UnloadModArchives();
+	PS3_LUA_BOOT_LOG("unloading mod archives complete");
 
 	std::vector<std::string_view> modnames = GetOptions().Mods.GetActiveModList();
+	PS3_LUA_BOOT_LOG("loading active mod archives begin");
 	LoadModArchives(modnames);
+	PS3_LUA_BOOT_LOG("loading active mod archives complete");
 
+	PS3_LUA_BOOT_LOG(StrCat("active mods found: ", modnames.size()));
 	for (const std::string_view modname : modnames) {
+		PS3_LUA_BOOT_LOG(StrCat("loading mod script begin: ", modname));
 		const std::string packageName = StrCat("mods.", modname, ".init");
 		RunScript(CreateLuaSandbox(), packageName, /*optional=*/true);
+		PS3_LUA_BOOT_LOG(StrCat("loading mod script complete: ", modname));
 	}
 
 	for (const tl::function_ref<void()> handler : IsModChangeHandlers) {
 		handler();
 	}
+	PS3_LUA_BOOT_LOG("mod change handlers complete");
 
 	// Reload sound effects in case a mod archive overrides effects.tsv
+	PS3_LUA_BOOT_LOG("sound effect cleanup begin");
 	effects_cleanup_sfx();
+	PS3_LUA_BOOT_LOG("sound effect cleanup complete");
+	PS3_LUA_BOOT_LOG("sound initialization begin");
 	if (gbRunGame)
 		sound_init();
 	else
 		ui_sound_init();
+	PS3_LUA_BOOT_LOG("sound initialization complete");
 
 	// Reload game data (this can probably be done later in the process to avoid having to reload it)
+	PS3_LUA_BOOT_LOG("game data reload begin");
 	LoadTextData();
 	LoadPlayerDataFiles();
 	LoadSpellData();
@@ -276,15 +302,20 @@ void LuaReloadActiveMods()
 	LoadItemData();
 	LoadObjectData();
 	LoadQuestData();
+	PS3_LUA_BOOT_LOG("game data reload complete");
 
 	lua::LoadModsComplete();
+	PS3_LUA_BOOT_LOG("active-mod reload complete");
 }
 
 void LuaInitialize()
 {
+	PS3_LUA_BOOT_LOG("state construction begin");
 	CurrentLuaState.emplace();
+	PS3_LUA_BOOT_LOG("state construction complete");
 	sol::state &lua = CurrentLuaState->sol;
 	lua_setwarnf(lua.lua_state(), LuaWarn, /*ud=*/nullptr);
+	PS3_LUA_BOOT_LOG("opening standard libraries begin");
 	lua.open_libraries(
 	    sol::lib::base,
 	    sol::lib::coroutine,
@@ -295,38 +326,74 @@ void LuaInitialize()
 	    sol::lib::string,
 	    sol::lib::table,
 	    sol::lib::utf8);
+	PS3_LUA_BOOT_LOG("opening standard libraries complete");
 
 	// Registering devilutionx object table
+	PS3_LUA_BOOT_LOG("registering require helper begin");
 	SafeCallResult(lua.safe_script(RequireGenSrc), /*optional=*/false);
+	PS3_LUA_BOOT_LOG("registering require helper complete");
 
-	CurrentLuaState->commonPackages = lua.create_table_with(
+	CurrentLuaState->commonPackages = lua.create_table();
 #ifdef _DEBUG
-	    "devilutionx.dev", LuaDevModule(lua),
+	PS3_LUA_BOOT_LOG("registering dev module begin");
+	CurrentLuaState->commonPackages["devilutionx.dev"] = LuaDevModule(lua);
+	PS3_LUA_BOOT_LOG("registering dev module complete");
 #endif
-	    "devilutionx.version", PROJECT_VERSION,
-	    "devilutionx.i18n", LuaI18nModule(lua),
-	    "devilutionx.items", LuaItemModule(lua),
-	    "devilutionx.log", LuaLogModule(lua),
-	    "devilutionx.audio", LuaAudioModule(lua),
-	    "devilutionx.monsters", LuaMonstersModule(lua),
-	    "devilutionx.player", LuaPlayerModule(lua),
-	    "devilutionx.render", LuaRenderModule(lua),
-	    "devilutionx.towners", LuaTownersModule(lua),
-	    "devilutionx.hellfire", LuaHellfireModule(lua),
-	    "devilutionx.system", LuaSystemModule(lua),
-	    "devilutionx.floatingnumbers", LuaFloatingNumbersModule(lua),
-	    "devilutionx.message", [](std::string_view text) { EventPlrMsg(text, UiFlags::ColorRed); },
-	    // This package is loaded without a sandbox:
-	    "inspect", RunScript(/*env=*/std::nullopt, "inspect", /*optional=*/false));
+	CurrentLuaState->commonPackages["devilutionx.version"] = PROJECT_VERSION;
+	PS3_LUA_BOOT_LOG("registering i18n module begin");
+	CurrentLuaState->commonPackages["devilutionx.i18n"] = LuaI18nModule(lua);
+	PS3_LUA_BOOT_LOG("registering i18n module complete");
+	PS3_LUA_BOOT_LOG("registering items module begin");
+	CurrentLuaState->commonPackages["devilutionx.items"] = LuaItemModule(lua);
+	PS3_LUA_BOOT_LOG("registering items module complete");
+	PS3_LUA_BOOT_LOG("registering log module begin");
+	CurrentLuaState->commonPackages["devilutionx.log"] = LuaLogModule(lua);
+	PS3_LUA_BOOT_LOG("registering log module complete");
+	PS3_LUA_BOOT_LOG("registering audio module begin");
+	CurrentLuaState->commonPackages["devilutionx.audio"] = LuaAudioModule(lua);
+	PS3_LUA_BOOT_LOG("registering audio module complete");
+	PS3_LUA_BOOT_LOG("registering monsters module begin");
+	CurrentLuaState->commonPackages["devilutionx.monsters"] = LuaMonstersModule(lua);
+	PS3_LUA_BOOT_LOG("registering monsters module complete");
+	PS3_LUA_BOOT_LOG("registering player module begin");
+	CurrentLuaState->commonPackages["devilutionx.player"] = LuaPlayerModule(lua);
+	PS3_LUA_BOOT_LOG("registering player module complete");
+	PS3_LUA_BOOT_LOG("registering render module begin");
+	CurrentLuaState->commonPackages["devilutionx.render"] = LuaRenderModule(lua);
+	PS3_LUA_BOOT_LOG("registering render module complete");
+	PS3_LUA_BOOT_LOG("registering towners module begin");
+	CurrentLuaState->commonPackages["devilutionx.towners"] = LuaTownersModule(lua);
+	PS3_LUA_BOOT_LOG("registering towners module complete");
+	PS3_LUA_BOOT_LOG("registering hellfire module begin");
+	CurrentLuaState->commonPackages["devilutionx.hellfire"] = LuaHellfireModule(lua);
+	PS3_LUA_BOOT_LOG("registering hellfire module complete");
+	PS3_LUA_BOOT_LOG("registering system module begin");
+	CurrentLuaState->commonPackages["devilutionx.system"] = LuaSystemModule(lua);
+	PS3_LUA_BOOT_LOG("registering system module complete");
+	PS3_LUA_BOOT_LOG("registering floating numbers module begin");
+	CurrentLuaState->commonPackages["devilutionx.floatingnumbers"] = LuaFloatingNumbersModule(lua);
+	PS3_LUA_BOOT_LOG("registering floating numbers module complete");
+	CurrentLuaState->commonPackages["devilutionx.message"] = [](std::string_view text) { EventPlrMsg(text, UiFlags::ColorRed); };
+
+	// This package is loaded without a sandbox:
+	PS3_LUA_BOOT_LOG("inspect script initialization begin");
+	CurrentLuaState->commonPackages["inspect"] = RunScript(/*env=*/std::nullopt, "inspect", /*optional=*/false);
+	PS3_LUA_BOOT_LOG("inspect script initialization complete");
 
 	// Used by the custom require implementation.
+	PS3_LUA_BOOT_LOG("registering environment helper begin");
 	lua["setEnvironment"] = [](const sol::environment &env, const sol::function &fn) { sol::set_environment(env, fn); };
+	PS3_LUA_BOOT_LOG("registering environment helper complete");
 
+	PS3_LUA_BOOT_LOG("registering mod callbacks begin");
 	for (OptionEntryBase *mod : GetOptions().Mods.GetEntries()) {
 		mod->SetValueChangedCallback(LuaReloadActiveMods);
 	}
+	PS3_LUA_BOOT_LOG("registering mod callbacks complete");
 
+	PS3_LUA_BOOT_LOG("active-mod reload dispatch begin");
 	LuaReloadActiveMods();
+	PS3_LUA_BOOT_LOG("LuaInitialize complete");
 }
 
 void LuaShutdown()
