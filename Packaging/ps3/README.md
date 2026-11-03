@@ -66,7 +66,9 @@ The repository keeps PS3 XMB media in `assets/xmb/`. The generated package place
 
 ## Startup log
 
-The priority-103 C runtime constructor writes an immediate marker to PSL1GHT's TTY channel, then tries to create a persistent log using direct LV2 filesystem syscalls. Once a file is open, all startup messages are mirrored to both the file and TTY. The code does not depend on Newlib stdio for the early log.
+The PS3 executable declares its process priority and 1 MiB main-thread stack with PSL1GHT's `SYS_PROCESS_PARAM` metadata. The linker explicitly retains `__sys_process_param` so the Release build's section garbage collection cannot discard the loader record.
+
+The priority-103 C runtime constructor creates a persistent log using direct LV2 filesystem syscalls, before Newlib file I/O is initialized. Diagnostics are written only to the console's local HDD or mounted USB storage; no TTY or network logging is used.
 
 It tries these paths in order:
 
@@ -74,9 +76,8 @@ It tries these paths in order:
 2. `/dev_hdd0/tmp/devilutionx-ps3.log`
 3. `/dev_hdd0/game/DEVILUT00/devilutionx-ps3.log`
 4. `/dev_usb000/devilutionx-ps3.log` through `/dev_usb005/devilutionx-ps3.log`
-5. `devilutionx-ps3.log` in the process working directory
 
-Connect a USB drive before launching to receive a log at its root when the HDD targets cannot be opened. TTY output can be inspected through RPCS3 logs or a PS3 ethdebug listener. The TTY stream now includes the constructor marker, every subsequent boot/SDL message, and all failed LV2 open return codes. No file plus no TTY marker points to failure before this constructor executes or to the process failing before PS3 TTY output can be captured.
+It uses the first writable location. Connect a USB drive before launching to allow a root-level log when the HDD targets cannot be opened. A missing log means the process did not reach the constructor or none of the local filesystem paths could be opened.
 
 ## Current porting status
 
