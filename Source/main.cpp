@@ -159,7 +159,7 @@ void InitializePS3Log()
 
 	for (unsigned int index = 0; index < sizeof(candidates) / sizeof(candidates[0]); ++index) {
 		s32 fd = -1;
-		const s32 result = PS3SysLv2FsOpen(candidates[index], SYS_O_WRONLY | SYS_O_CREAT | SYS_O_TRUNC, &fd, 0666, nullptr, 0);
+		const s32 result = PS3SysLv2FsOpen(candidates[index], SYS_O_WRONLY | SYS_O_CREAT | SYS_O_TRUNC, &fd, 0666);
 		if (result != 0) {
 			openResults[index] = result;
 			continue;
