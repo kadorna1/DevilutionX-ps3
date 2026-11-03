@@ -122,7 +122,9 @@ fi
 
 echo "Adding PS3 XMB media..."
 XMB_DIR="$ROOT/assets/xmb"
-for asset in ICON0.PNG LOGO0.PNG PIC1.PNG SND0.AT3; do
+# LOGO0.PNG is kept in the repository as artwork but is not an XMB
+# package asset. Only these three active files belong at the package root.
+for asset in ICON0.PNG PIC1.PNG SND0.AT3; do
   [[ -s "$XMB_DIR/$asset" ]] || die "required XMB asset missing: $XMB_DIR/$asset"
   cp "$XMB_DIR/$asset" "$PKGDIR/$asset"
 done
@@ -134,7 +136,6 @@ import sys
 root = Path(sys.argv[1])
 expected = {
     "ICON0.PNG": (320, 176),
-    "LOGO0.PNG": (320, 176),
     "PIC1.PNG": (1920, 1080),
 }
 for name, dimensions in expected.items():
