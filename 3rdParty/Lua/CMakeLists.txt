@@ -257,11 +257,31 @@ extern void PS3LuaRawBootLogStatus(int status, int callbackReturned);
       _ps3_lua_do_content "${_ps3_lua_do_content}")
   endif()
 
-  # The protected-call status logger is required; backend selection itself
-  # is enforced by LUA_USE_LONGJMP on lua_static below. Do not make a fragile
-  # source-text marker a configuration prerequisite for cached Lua trees.
-  if(NOT _ps3_lua_do_content MATCHES "PS3_LUA_CORE_TRACE_STATUS")
-    message(STATUS "PS3 Lua status logger not present in cached source; proceeding with native Lua status")
+  # Record the initialized status before entering the protected callback.
+  if(NOT _ps3_lua_do_content MATCHES "PS3_LUA_CORE_TRACE_STATUS\\(lj.status, -2\\)")
+    string(REPLACE
+      [=[  lj.status = LUA_OK;]=]
+      [=[  lj.status = LUA_OK;
+#ifdef __PS3__
+  PS3_LUA_CORE_TRACE_STATUS(lj.status, -2); /* initial status; -2 identifies this probe */
+#endif]=]
+      _ps3_lua_do_content "${_ps3_lua_do_content}")
+  endif()
+
+  # Record every explicit Lua throw that writes to the active protected call.
+  if(NOT _ps3_lua_do_content MATCHES "PS3_LUA_CORE_TRACE_STATUS\\(errcode, -1\\)")
+    string(REPLACE
+      [=[    L->errorJmp->status = errcode;  /* set status */]=]
+      [=[    L->errorJmp->status = errcode;  /* set status */
+#ifdef __PS3__
+    PS3_LUA_CORE_TRACE_STATUS(errcode, -1); /* -1 identifies a luaD_throw write */
+#endif]=]
+      _ps3_lua_do_content "${_ps3_lua_do_content}")
+  endif()
+
+  if(NOT _ps3_lua_do_content MATCHES "PS3_LUA_CORE_TRACE_STATUS\\(lj.status, -2\\)" OR
+     NOT _ps3_lua_do_content MATCHES "PS3_LUA_CORE_TRACE_STATUS\\(errcode, -1\\)")
+    message(FATAL_ERROR "Failed to apply PS3 Lua protected-call status probes")
   endif()
 
   file(WRITE "${_ps3_lua_do_source}" "${_ps3_lua_do_content}")
