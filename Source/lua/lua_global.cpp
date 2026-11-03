@@ -1,6 +1,7 @@
 #include "lua/lua_global.hpp"
 
 #include <algorithm>
+#include <cstdlib>
 #include <expected>
 #include <optional>
 #include <string>
@@ -53,11 +54,58 @@ namespace devilution {
 
 #ifdef __PS3__
 #define PS3_LUA_BOOT_LOG(message) LogInfo("PS3 boot: Lua: {}", message)
+extern "C" void PS3LuaRawBootLog(const char *message);
 #else
 #define PS3_LUA_BOOT_LOG(message) ((void)0)
 #endif
 
 namespace {
+
+#ifdef __PS3__
+struct LuaAllocatorStats {
+	size_t liveBytes = 0;
+	size_t peakBytes = 0;
+	size_t allocationCalls = 0;
+	size_t failureCalls = 0;
+	size_t lastFailedRequest = 0;
+};
+
+void *PS3LuaAllocator(void *userData, void *pointer, size_t oldSize, size_t newSize)
+{
+	auto *stats = static_cast<LuaAllocatorStats *>(userData);
+	if (newSize == 0) {
+		if (pointer != nullptr) {
+			if (oldSize <= stats->liveBytes)
+				stats->liveBytes -= oldSize;
+			else
+				stats->liveBytes = 0;
+			std::free(pointer);
+		}
+		return nullptr;
+	}
+
+	if (stats->allocationCalls == 0)
+		PS3LuaRawBootLog("Lua allocator: first allocation request");
+	void *const result = std::realloc(pointer, newSize);
+	if (result == nullptr) {
+		++stats->failureCalls;
+		stats->lastFailedRequest = newSize;
+		PS3LuaRawBootLog("Lua allocator: realloc failed");
+		return nullptr;
+	}
+	++stats->allocationCalls;
+	if (pointer == nullptr) {
+		stats->liveBytes += newSize;
+	} else if (newSize >= oldSize) {
+		stats->liveBytes += newSize - oldSize;
+	} else {
+		stats->liveBytes -= oldSize - newSize;
+	}
+	if (stats->liveBytes > stats->peakBytes)
+		stats->peakBytes = stats->liveBytes;
+	return result;
+}
+#endif
 
 void LuaPanic(const std::optional<std::string> &message)
 {
@@ -66,16 +114,54 @@ void LuaPanic(const std::optional<std::string> &message)
 }
 
 struct LuaState {
+#ifdef __PS3__
+	LuaAllocatorStats allocatorStats;
+	lua_State *rawState = nullptr;
+	std::optional<sol::state_view> sol;
+#else
 	sol::state sol;
+#endif
 	sol::table commonPackages;
 	ankerl::unordered_dense::segmented_map<std::string, sol::bytecode> compiledScripts;
 	sol::environment sandbox;
 	sol::table events;
 
 	LuaState()
+#ifndef __PS3__
 	    : sol(sol::c_call<decltype(&LuaPanic), &LuaPanic>)
+#endif
 	{
+#ifdef __PS3__
+		PS3LuaRawBootLog("Lua VM: lua_newstate begin");
+		rawState = lua_newstate(PS3LuaAllocator, &allocatorStats);
+		if (rawState == nullptr) {
+			PS3LuaRawBootLog("Lua VM: lua_newstate returned null");
+			PS3_LUA_BOOT_LOG(StrCat(
+			    "state allocation failed; calls=", allocatorStats.allocationCalls,
+			    ", failures=", allocatorStats.failureCalls,
+			    ", live=", allocatorStats.liveBytes,
+			    ", peak=", allocatorStats.peakBytes,
+			    ", failed request=", allocatorStats.lastFailedRequest));
+			return;
+		}
+		sol.emplace(rawState);
+		sol->set_panic(sol::c_call<decltype(&LuaPanic), &LuaPanic>);
+		PS3LuaRawBootLog("Lua VM: lua_newstate completed");
+		PS3_LUA_BOOT_LOG(StrCat(
+		    "state allocation complete; calls=", allocatorStats.allocationCalls,
+		    ", live=", allocatorStats.liveBytes,
+		    ", peak=", allocatorStats.peakBytes));
+#endif
 	}
+
+#ifdef __PS3__
+	~LuaState()
+	{
+		sol.reset();
+		if (rawState != nullptr)
+			lua_close(rawState);
+	}
+#endif
 };
 
 std::optional<LuaState> CurrentLuaState;
@@ -117,20 +203,20 @@ sol::object LuaLoadScriptFromAssets(std::string_view packageName)
 
 	auto iter = luaState.compiledScripts.find(path);
 	if (iter != luaState.compiledScripts.end()) {
-		return luaState.sol.load(iter->second.as_string_view(), path, sol::load_mode::binary);
+		return luaState.sol->load(iter->second.as_string_view(), path, sol::load_mode::binary);
 	}
 
 	std::expected<AssetData, std::string> assetData = LoadIntegralAsset(path);
 	if (!assetData.has_value()) {
 		PS3_LUA_BOOT_LOG(StrCat("script asset loading failed: ", path, ": ", assetData.error()));
-		sol::stack::push(luaState.sol.lua_state(), assetData.error());
-		return sol::stack_object(luaState.sol.lua_state(), -1);
+		sol::stack::push(luaState.sol->lua_state(), assetData.error());
+		return sol::stack_object(luaState.sol->lua_state(), -1);
 	}
-	const sol::load_result result = luaState.sol.load(std::string_view(*assetData), path, sol::load_mode::text);
+	const sol::load_result result = luaState.sol->load(std::string_view(*assetData), path, sol::load_mode::text);
 	if (!result.valid()) {
-		sol::stack::push(luaState.sol.lua_state(),
+		sol::stack::push(luaState.sol->lua_state(),
 		    StrCat("Lua error when loading ", path, ": ", result.get<std::string>()));
-		return sol::stack_object(luaState.sol.lua_state(), -1);
+		return sol::stack_object(luaState.sol->lua_state(), -1);
 	}
 	const sol::function fn = result;
 	PS3_LUA_BOOT_LOG(StrCat("script bytecode compilation begin: ", path));
@@ -195,7 +281,7 @@ void Sol2DebugPrintSection(const std::string &message, lua_State *state)
 
 sol::environment CreateLuaSandbox()
 {
-	sol::state &lua = CurrentLuaState->sol;
+	sol::state_view &lua = *CurrentLuaState->sol;
 	sol::environment sandbox(lua, sol::create);
 
 	// Registering globals
@@ -312,8 +398,14 @@ void LuaInitialize()
 {
 	PS3_LUA_BOOT_LOG("state construction begin");
 	CurrentLuaState.emplace();
+#ifdef __PS3__
+	if (!CurrentLuaState->sol.has_value()) {
+		PS3_LUA_BOOT_LOG("state construction failed: Lua returned no state");
+		app_fatal("Unable to create the Lua VM (see devilutionx-ps3.log for allocator details)");
+	}
+#endif
 	PS3_LUA_BOOT_LOG("state construction complete");
-	sol::state &lua = CurrentLuaState->sol;
+	sol::state_view &lua = *CurrentLuaState->sol;
 	lua_setwarnf(lua.lua_state(), LuaWarn, /*ud=*/nullptr);
 	PS3_LUA_BOOT_LOG("opening standard libraries begin");
 	lua.open_libraries(
@@ -412,7 +504,7 @@ sol::table *GetLuaEvents()
 	return CurrentLuaState ? &CurrentLuaState->events : nullptr;
 }
 
-sol::state &GetLuaState()
+sol::state_view &GetLuaState()
 {
 	return CurrentLuaState->sol;
 }
