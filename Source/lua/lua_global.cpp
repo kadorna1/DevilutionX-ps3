@@ -1,7 +1,6 @@
 #include "lua/lua_global.hpp"
 
 #include <algorithm>
-#include <cstdlib>
 #include <expected>
 #include <optional>
 #include <string>
@@ -10,6 +9,7 @@
 
 #include <ankerl/unordered_dense.h>
 #include <function_ref.hpp>
+#include <lauxlib.h>
 #include <sol/bytecode.hpp>
 #include <sol/debug.hpp>
 #include <sol/environment.hpp>
@@ -62,49 +62,8 @@ extern "C" void PS3LuaRawBootLog(const char *message);
 namespace {
 
 #ifdef __PS3__
-struct LuaAllocatorStats {
-	size_t liveBytes = 0;
-	size_t peakBytes = 0;
-	size_t allocationCalls = 0;
-	size_t failureCalls = 0;
-	size_t lastFailedRequest = 0;
-};
-
-void *PS3LuaAllocator(void *userData, void *pointer, size_t oldSize, size_t newSize)
-{
-	auto *stats = static_cast<LuaAllocatorStats *>(userData);
-	if (newSize == 0) {
-		if (pointer != nullptr) {
-			if (oldSize <= stats->liveBytes)
-				stats->liveBytes -= oldSize;
-			else
-				stats->liveBytes = 0;
-			std::free(pointer);
-		}
-		return nullptr;
-	}
-
-	if (stats->allocationCalls == 0)
-		PS3LuaRawBootLog("Lua allocator: first allocation request");
-	void *const result = std::realloc(pointer, newSize);
-	if (result == nullptr) {
-		++stats->failureCalls;
-		stats->lastFailedRequest = newSize;
-		PS3LuaRawBootLog("Lua allocator: realloc failed");
-		return nullptr;
-	}
-	++stats->allocationCalls;
-	if (pointer == nullptr) {
-		stats->liveBytes += newSize;
-	} else if (newSize >= oldSize) {
-		stats->liveBytes += newSize - oldSize;
-	} else {
-		stats->liveBytes -= oldSize - newSize;
-	}
-	if (stats->liveBytes > stats->peakBytes)
-		stats->peakBytes = stats->liveBytes;
-	return result;
-}
+// This diagnostic build intentionally uses luaL_newstate() and Lua's stock
+// free/realloc allocator to isolate the previous custom allocator path.
 #endif
 
 void LuaPanic(const std::optional<std::string> &message)
@@ -129,7 +88,6 @@ struct LuaState {
 #ifdef __PS3__
 	// Declared first so it is destroyed last, after all sol2 references.
 	LuaStateOwner owner;
-	LuaAllocatorStats allocatorStats;
 	std::optional<sol::state_view> luaView;
 #else
 	sol::state luaState;
@@ -145,27 +103,17 @@ struct LuaState {
 #endif
 	{
 #ifdef __PS3__
-		PS3LuaRawBootLog("Lua VM: lua_newstate begin");
-		owner.state = lua_newstate(PS3LuaAllocator, &allocatorStats);
+		PS3LuaRawBootLog("Lua VM: luaL_newstate begin");
+		owner.state = luaL_newstate();
 		if (owner.state == nullptr) {
-			PS3LuaRawBootLog("Lua VM: lua_newstate returned null");
-			PS3_LUA_BOOT_LOG(StrCat(
-			    "state allocation failed; calls=", allocatorStats.allocationCalls,
-			    ", failures=", allocatorStats.failureCalls,
-			    ", live=", allocatorStats.liveBytes,
-			    ", peak=", allocatorStats.peakBytes,
-			    ", failed request=", allocatorStats.lastFailedRequest));
+			PS3LuaRawBootLog("Lua VM: luaL_newstate returned null");
 			return;
 		}
-		PS3LuaRawBootLog("Lua VM: lua_newstate returned valid state");
+		PS3LuaRawBootLog("Lua VM: luaL_newstate returned valid state");
 		luaView.emplace(owner.state);
 		PS3LuaRawBootLog("Lua VM: sol2 state_view construction completed");
 		luaView->set_panic(sol::c_call<decltype(&LuaPanic), &LuaPanic>);
 		PS3LuaRawBootLog("Lua VM: panic handler registered");
-		PS3_LUA_BOOT_LOG(StrCat(
-		    "state allocation complete; calls=", allocatorStats.allocationCalls,
-		    ", live=", allocatorStats.liveBytes,
-		    ", peak=", allocatorStats.peakBytes));
 #endif
 	}
 
