@@ -23,14 +23,18 @@ apt-get install -y cmake ninja-build gettext ccache python3
 bash Packaging/ps3/build.sh
 ```
 
-The output is `build-ps3/devilutionx-ps3.pkg`. When the SDK's
-`package_finalize` utility is present, the script also creates
-`build-ps3/devilutionx-ps3-gnpdrm.pkg`.
+The build creates a PPU ELF and then wraps it as a PS3 NPDRM SELF
+(`USRDIR/EBOOT.BIN`) inside `build-ps3/devilutionx-ps3.pkg`. When the SDK's
+`package_finalize` utility is present, it also creates
+`build-ps3/devilutionx-ps3-gnpdrm.pkg`. The packaging script validates the
+SELF, PARAM.SFO and PKG headers/content ID before returning successfully.
 
-The GitHub Actions workflow uses the same container and preserves the CMake/Ninja
-build tree plus ccache between runs. Unchanged tracked source files have their
-checkout timestamps normalized against a saved content-hash manifest, allowing
-Ninja to rebuild only changed translation units.
+GitHub Actions uploads two separate artifacts: `devilutionx-ps3-ppu-elf` for
+the linked executable and built-in assets, and `devilutionx-ps3-pkg` for the
+generated package(s). The workflow preserves the CMake/Ninja build tree plus
+ccache between runs. Unchanged tracked source files have their checkout
+timestamps normalized against a saved content-hash manifest, allowing Ninja
+to rebuild only changed translation units.
 
 ## Install and game data
 
