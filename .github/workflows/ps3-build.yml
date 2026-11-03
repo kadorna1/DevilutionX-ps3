@@ -41,7 +41,7 @@ jobs:
         run: |
           apt-get update
           apt-get install -y --no-install-recommends \
-            cmake ninja-build gettext ccache python3 file
+            cmake ninja-build gettext ccache python3 file binutils
           rm -rf /var/lib/apt/lists/*
 
       - name: Verify PS3 SDK and SDL2
@@ -101,17 +101,23 @@ jobs:
           python3 Packaging/ps3/incremental.py record build-ps3
           ccache --show-stats | tee build-ps3/ccache-stats.txt
 
-      - name: Create PS3 PKG
+      - name: Verify linked PPU ELF
         run: |
-          bash Packaging/ps3/make_pkg.sh build-ps3
+          set -euo pipefail
+          test -s build-ps3/devilutionx
+          file build-ps3/devilutionx | tee build-ps3/ppu-elf-info.txt
+          file build-ps3/devilutionx | grep -Eiq 'ELF 64-bit MSB.*PowerPC'
+          readelf -h build-ps3/devilutionx | tee -a build-ps3/ppu-elf-info.txt
+          readelf -h build-ps3/devilutionx | grep -Eiq 'PowerPC64|PowerPC'
 
-      - name: Upload PS3 packages and build metadata
+      - name: Upload PPU ELF and built-in engine assets
         uses: actions/upload-artifact@v4
         with:
-          name: devilutionx-ps3
+          name: devilutionx-ps3-ppu-elf
           path: |
-            build-ps3/devilutionx-ps3.pkg
-            build-ps3/devilutionx-ps3-gnpdrm.pkg
+            build-ps3/devilutionx
+            build-ps3/assets/
             build-ps3/ps3-sdk-info.txt
+            build-ps3/ppu-elf-info.txt
             build-ps3/ccache-stats.txt
-          if-no-files-found: warn
+          if-no-files-found: error
