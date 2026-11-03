@@ -68,17 +68,17 @@ void InitializePS3Log()
 	    "/dev_usb000/devilutionx-ps3.log",
 	    "devilutionx-ps3.log",
 	};
+	int openErrors[sizeof(candidates) / sizeof(candidates[0])] = {};
 
 	std::fflush(stdout);
 	std::fflush(stderr);
 
-	for (const char *candidate : candidates) {
+	for (unsigned int index = 0; index < sizeof(candidates) / sizeof(candidates[0]); ++index) {
+		const char *candidate = candidates[index];
 		errno = 0;
 		FILE *file = std::fopen(candidate, "w");
 		if (file == nullptr) {
-			const int openError = errno;
-			std::fprintf(stderr, "[PS3][BOOT] fopen failed: %s (errno=%d)\n", candidate, openError);
-			std::fflush(stderr);
+			openErrors[index] = errno;
 			continue;
 		}
 
@@ -86,7 +86,21 @@ void InitializePS3Log()
 		PS3LogPath = candidate;
 		std::setvbuf(PS3LogFile, nullptr, _IONBF, 0);
 		PS3WriteBootLog("persistent log opened");
+
+		// Record earlier failures in the persistent log, rather than only on stderr.
+		for (unsigned int failedIndex = 0; failedIndex < index; ++failedIndex) {
+			if (openErrors[failedIndex] != 0) {
+				std::fprintf(PS3LogFile, "[PS3][BOOT] fopen failed: %s (errno=%d)\\n", candidates[failedIndex], openErrors[failedIndex]);
+			}
+		}
 		PS3WriteBootLog(PS3LogPath);
+		std::fflush(PS3LogFile);
+		return;
+	}
+
+	for (unsigned int index = 0; index < sizeof(candidates) / sizeof(candidates[0]); ++index) {
+		std::fprintf(stderr, "[PS3][BOOT] fopen failed: %s (errno=%d)\\n", candidates[index], openErrors[index]);
+	}
 		return;
 	}
 
