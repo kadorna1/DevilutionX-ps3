@@ -4,6 +4,9 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "PS3" AND NOT PS3)
 endif()
 
 set(PS3 TRUE CACHE BOOL "Building for PlayStation 3" FORCE)
+# The PS3 runtime does not support loading ordinary shared libraries. Make
+# dependency selection default to static archives for this target.
+set_property(GLOBAL PROPERTY TARGET_SUPPORTS_SHARED_LIBS FALSE)
 
 set(DEVILUTIONX_PS3_TITLE_ID "DEVILUT00" CACHE STRING "PS3 package TITLE_ID and writable game directory")
 string(LENGTH "${DEVILUTIONX_PS3_TITLE_ID}" _ps3_title_id_length)
@@ -31,6 +34,14 @@ set(DISABLE_ZERO_TIER ON CACHE BOOL "" FORCE)
 set(DEVILUTIONX_DISABLE_STRIP ON CACHE BOOL "" FORCE)
 set(DEVILUTIONX_STATIC_CXX_STDLIB ON CACHE BOOL "" FORCE)
 set(DEVILUTIONX_GAMEPAD_TYPE PlayStation CACHE STRING "" FORCE)
+
+# The PS3 portlibs image does not provide all CMake find_package metadata.
+# Build zlib and bzip2 from the vendored sources as static archives; libpng
+# uses the bundled zlib FindZLIB shim exposed by 3rdParty/zlib.
+set(DEVILUTIONX_SYSTEM_ZLIB OFF CACHE BOOL "" FORCE)
+set(DEVILUTIONX_STATIC_ZLIB ON CACHE BOOL "" FORCE)
+set(DEVILUTIONX_SYSTEM_BZIP2 OFF CACHE BOOL "" FORCE)
+set(DEVILUTIONX_STATIC_BZIP2 ON CACHE BOOL "" FORCE)
 
 # Reuse SDL2 from the ps3dev-sdl2 portlibs. Build DevilutionX's image and
 # audio helper libraries from its vendored sources to avoid mismatched
