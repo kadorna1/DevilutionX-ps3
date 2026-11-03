@@ -128,9 +128,22 @@ void init_cleanup()
 
 void init_create_window()
 {
-	if (!SpawnWindow(PROJECT_NAME))
+#ifdef __PS3__
+	LogInfo("PS3 startup: SDL window creation begin");
+#endif
+	if (!SpawnWindow(PROJECT_NAME)) {
+#ifdef __PS3__
+		LogError("PS3 startup: SDL window creation failed: {}", SDL_GetError());
+#endif
 		app_fatal(_("Unable to create main window"));
+	}
+#ifdef __PS3__
+	LogInfo("PS3 startup: SDL window created");
+#endif
 	dx_init();
+#ifdef __PS3__
+	LogInfo("PS3 startup: dx_init complete");
+#endif
 	gbActive = true;
 #ifndef USE_SDL1
 	SDL_DisableScreenSaver();

@@ -136,6 +136,12 @@
 
 namespace devilution {
 
+#ifdef __PS3__
+#define PS3_BOOT_LOG(message) LogInfo("PS3 boot: {}", message)
+#else
+#define PS3_BOOT_LOG(message) ((void)0)
+#endif
+
 Point MousePosition;
 bool gbRunGameResult;
 bool ReturnToMainMenu;
@@ -1242,18 +1248,23 @@ void CheckArchivesUpToDate()
 
 void ApplicationInit()
 {
+	PS3_BOOT_LOG("ApplicationInit: begin");
 	if (*GetOptions().Graphics.showFPS)
 		EnableFrameCount();
 
+	PS3_BOOT_LOG("ApplicationInit: create window begin");
 	init_create_window();
 	was_window_init = true;
+	PS3_BOOT_LOG("ApplicationInit: window and renderer ready");
 
+	PS3_BOOT_LOG("ApplicationInit: screen reader and language initialization");
 	InitializeScreenReader();
 	LanguageInitialize();
 
 	SetApplicationVersions();
 
 	ReadOnlyTest();
+	PS3_BOOT_LOG("ApplicationInit: complete");
 }
 
 void DiabloInit()
@@ -1283,10 +1294,13 @@ void DiabloInit()
 	}
 
 #ifndef USE_SDL1
+	PS3_BOOT_LOG("DiabloInit: virtual gamepad initialization");
 	InitializeVirtualGamepad();
 #endif
 
+	PS3_BOOT_LOG("DiabloInit: UI initialization begin");
 	UiInitialize();
+	PS3_BOOT_LOG("DiabloInit: UI initialization complete");
 	was_ui_init = true;
 
 	if (wasHellfireDiscovered) {
@@ -1300,14 +1314,21 @@ void DiabloInit()
 		}
 	}
 
+	PS3_BOOT_LOG("DiabloInit: game screen initialization begin");
 	DiabloInitScreen();
+	PS3_BOOT_LOG("DiabloInit: game screen initialization complete");
 
+	PS3_BOOT_LOG("DiabloInit: sound initialization begin");
 	snd_init();
+	PS3_BOOT_LOG("DiabloInit: sound initialization complete");
 
 	ui_sound_init();
+	PS3_BOOT_LOG("DiabloInit: UI sound initialization complete");
 
 	// Item graphics are loaded early, they already get touched during hero selection.
+	PS3_BOOT_LOG("DiabloInit: item graphics initialization begin");
 	InitItemGFX();
+	PS3_BOOT_LOG("DiabloInit: item graphics initialization complete");
 
 	// Always available.
 	LoadSmallSelectionSpinner();
@@ -1357,6 +1378,7 @@ void DiabloDeinit()
 	UnloadFonts();
 	if (SDL_WasInit((~0U) & ~SDL_INIT_HAPTIC) != 0)
 		SDL_Quit();
+	PS3_BOOT_LOG("shutdown cleanup complete");
 }
 
 std::expected<void, std::string> LoadLvlGFX()
@@ -2732,6 +2754,10 @@ bool StartGame(bool bNewGame, bool bSinglePlayer)
 
 void diablo_quit(int exitStatus)
 {
+	PS3_BOOT_LOG("shutdown requested");
+#ifdef __PS3__
+	LogInfo("PS3 shutdown: exit status {}", exitStatus);
+#endif
 	FreeGameMem();
 	music_stop();
 	DiabloDeinit();
@@ -2754,60 +2780,91 @@ void setOnInitialized(void (*callback)())
 
 int DiabloMain(int argc, char **argv)
 {
+	PS3_BOOT_LOG("DiabloMain: entered");
 #ifdef _DEBUG
 	SDL_SetLogPriorities(SDL_LOG_PRIORITY_DEBUG);
 #endif
 
+	PS3_BOOT_LOG("command-line parsing begin");
 	DiabloParseFlags(argc, argv);
+	PS3_BOOT_LOG("command-line parsing complete");
 	InitKeymapActions();
 	InitPadmapActions();
 
 	// Need to ensure devilutionx.mpq (and fonts.mpq if available) are loaded before attempting to read translation settings
+	PS3_BOOT_LOG("core archive loading begin");
 	LoadCoreArchives();
+	PS3_BOOT_LOG("core archive loading complete");
 	was_archives_init = true;
 
 	// Read settings including translation next. This will use the presence of fonts.mpq and look for assets in devilutionx.mpq
+	PS3_BOOT_LOG("configuration loading begin");
 	LoadOptions();
+	PS3_BOOT_LOG("configuration loading complete");
 	if (demo::IsRunning()) demo::OverrideOptions();
 
 	// Then look for a voice pack file based on the selected translation
+	PS3_BOOT_LOG("language archive loading begin");
 	LoadLanguageArchive();
+	PS3_BOOT_LOG("language archive loading complete");
 
+	PS3_BOOT_LOG("ApplicationInit begin");
 	ApplicationInit();
+	PS3_BOOT_LOG("ApplicationInit complete");
 
 	// Ensure the core archives are up to date before loading any assets from them,
 	// e.g. `lua\inspect.lua` is loaded during `LuaInitialize()` and would otherwise
 	// abort with a confusing "Asset not found" error on an out-of-date archive.
+	PS3_BOOT_LOG("archive version check begin");
 	CheckArchivesUpToDate();
+	PS3_BOOT_LOG("archive version check complete");
 
+	PS3_BOOT_LOG("Lua initialization begin");
 	LuaInitialize();
+	PS3_BOOT_LOG("Lua initialization complete");
 	if (!demo::IsRunning()) SaveOptions();
 
 	// Finally load game data
+	PS3_BOOT_LOG("game archive loading begin");
 	LoadGameArchives();
+	PS3_BOOT_LOG("game archive loading complete");
 
+	PS3_BOOT_LOG("text data loading begin");
 	LoadTextData();
+	PS3_BOOT_LOG("text data loading complete");
 
 	// Load dynamic data before we go into the menu as we need to initialise player characters in memory pretty early.
+	PS3_BOOT_LOG("player data loading begin");
 	LoadPlayerDataFiles();
+	PS3_BOOT_LOG("player data loading complete");
 
 	// TODO: We can probably load this much later (when the game is starting).
+	PS3_BOOT_LOG("game table loading begin");
 	LoadSpellData();
 	LoadMissileData();
 	LoadMonsterData();
 	LoadItemData();
 	LoadObjectData();
 	LoadQuestData();
+	PS3_BOOT_LOG("game table loading complete");
 
+	PS3_BOOT_LOG("DiabloInit begin");
 	DiabloInit();
+	PS3_BOOT_LOG("DiabloInit complete");
 #ifdef __UWP__
 	onInitialized();
 #endif
 	if (!demo::IsRunning()) SaveOptions();
 
+	PS3_BOOT_LOG("splash/intro sequence begin");
 	DiabloSplash();
+	PS3_BOOT_LOG("splash/intro sequence complete");
+	PS3_BOOT_LOG("main menu loop entered");
 	mainmenu_loop();
+	PS3_BOOT_LOG("main menu loop returned");
+	PS3_BOOT_LOG("DiabloDeinit begin");
 	DiabloDeinit();
+	PS3_BOOT_LOG("DiabloDeinit complete");
 
 	return 0;
 }

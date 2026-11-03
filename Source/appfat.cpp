@@ -23,6 +23,7 @@
 #include "multi.h"
 #include "storm/storm_net.hpp"
 #include "utils/format.hpp"
+#include "utils/log.hpp"
 #include "utils/language.h"
 #include "utils/sdl_thread.h"
 #include "utils/str_cat.hpp"
@@ -61,6 +62,9 @@ void FreeDlg()
 
 void DisplayFatalErrorAndExit(std::string_view title, std::string_view body)
 {
+#ifdef __PS3__
+	LogCritical("PS3 fatal error: {}: {}", title, body);
+#endif
 	FreeDlg();
 	UiErrorOkDialog(title, body);
 	diablo_quit(1);

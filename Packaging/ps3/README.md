@@ -54,6 +54,14 @@ from a copy of the original game that you are entitled to use.
 The PS3 build stores saves and configuration in the title's writable
 `USRDIR` directory. The title ID is `DEVILUT00`.
 
+## Startup log
+
+Every PS3 launch recreates a plain-text startup log at:
+
+`/dev_hdd0/game/DEVILUT00/USRDIR/devilutionx-ps3.log`
+
+The log captures early process output, SDL messages, and markers around the main startup stages. Messages are flushed as they are written so the file remains useful when the title exits or crashes. Retrieve it from the PS3 HDD with an FTP client or a homebrew file manager. The last `PS3 boot:` entry identifies the last startup stage reached. If the file is not created at all, the executable likely did not reach `main()` (or the title directory could not be opened for writing).
+
 ## Current porting status
 
 This first bring-up target disables networking, uses the PlayStation gamepad
