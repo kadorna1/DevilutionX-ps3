@@ -16,6 +16,10 @@ include_directories("${_psl1ght_ppu_include}")
 # dependency selection default to static archives for this target.
 set_property(GLOBAL PROPERTY TARGET_SUPPORTS_SHARED_LIBS FALSE)
 
+# Keep PSL1GHT's process-parameter record in Release builds. The global
+# --gc-sections pass would otherwise discard this loader metadata.
+add_link_options("LINKER:--undefined=__sys_process_param")
+
 set(DEVILUTIONX_PS3_TITLE_ID "DEVILUT00" CACHE STRING "PS3 package TITLE_ID and writable game directory")
 string(LENGTH "${DEVILUTIONX_PS3_TITLE_ID}" _ps3_title_id_length)
 if(NOT _ps3_title_id_length EQUAL 9 OR NOT "${DEVILUTIONX_PS3_TITLE_ID}" MATCHES "^[A-Z0-9]+$")
