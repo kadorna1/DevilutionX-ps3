@@ -114,6 +114,9 @@ void PS3LogOutput(void *, int category, SDL_LogPriority priority, const char *me
 	PS3RawWrite("] ");
 	PS3RawWrite(message != nullptr ? message : "");
 	PS3RawWrite("\n");
+	if (PS3LogFd >= 0)
+		(void)sysLv2FsFsync(PS3LogFd);
+
 }
 
 void InitializePS3Log()
@@ -152,6 +155,7 @@ void InitializePS3Log()
 		PS3RawWrite(candidates[index]);
 		PS3RawWrite("\n");
 		PS3WriteBootLog("pre-main constructor reached");
+		(void)sysLv2FsFsync(PS3LogFd);
 		return;
 	}
 
