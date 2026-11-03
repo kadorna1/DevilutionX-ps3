@@ -62,12 +62,12 @@ if(CMAKE_SYSTEM_NAME STREQUAL "PS3")
   endif()
   # Trace and harden the protected-call boundary separately from f_luaopen.
   # CMake bracket arguments keep the C source fragments literal.
-  set(_ps3_lua_do_source "\${lua_SOURCE_DIR}/lua-5.4.7/src/ldo.c")
-  if(NOT EXISTS "\${_ps3_lua_do_source}")
-    message(FATAL_ERROR "Could not find fetched Lua source: \${_ps3_lua_do_source}")
+  set(_ps3_lua_do_source "${lua_SOURCE_DIR}/lua-5.4.7/src/ldo.c")
+  if(NOT EXISTS "${_ps3_lua_do_source}")
+    message(FATAL_ERROR "Could not find fetched Lua source: ${_ps3_lua_do_source}")
   endif()
 
-  file(READ "\${_ps3_lua_do_source}" _ps3_lua_do_content)
+  file(READ "${_ps3_lua_do_source}" _ps3_lua_do_content)
   if(NOT _ps3_lua_do_content MATCHES "PS3 protected-call status normalization")
     # Add the trace hook on an untouched Lua source tree.
     if(NOT _ps3_lua_do_content MATCHES "PS3 protected-call trace")
@@ -81,7 +81,7 @@ extern void PS3LuaRawBootLogNoSync(const char *message);
 #else
 #define PS3_LUA_CORE_TRACE(message) ((void)0)
 #endif /* PS3 protected-call trace */]=]
-        _ps3_lua_do_content "\${_ps3_lua_do_content}")
+        _ps3_lua_do_content "${_ps3_lua_do_content}")
     endif()
 
     # Extend both a freshly patched tree and a build tree restored from the
@@ -91,12 +91,12 @@ extern void PS3LuaRawBootLogNoSync(const char *message);
       [=[#define PS3_LUA_CORE_TRACE(message) PS3LuaRawBootLogNoSync(message)
 extern void PS3LuaRawBootLogStatus(int status);
 #define PS3_LUA_CORE_TRACE_STATUS(status) PS3LuaRawBootLogStatus(status)]=]
-      _ps3_lua_do_content "\${_ps3_lua_do_content}")
+      _ps3_lua_do_content "${_ps3_lua_do_content}")
     string(REPLACE
       [=[#define PS3_LUA_CORE_TRACE(message) ((void)0)]=]
       [=[#define PS3_LUA_CORE_TRACE(message) ((void)0)
 #define PS3_LUA_CORE_TRACE_STATUS(status) ((void)0)]=]
-      _ps3_lua_do_content "\${_ps3_lua_do_content}")
+      _ps3_lua_do_content "${_ps3_lua_do_content}")
 
     # Add the existing boundary checkpoints only when this is an unpatched
     # upstream file. A cached instrumented file already contains them.
@@ -105,27 +105,27 @@ extern void PS3LuaRawBootLogStatus(int status);
         [=[  L->errorJmp = &lj;]=]
         [=[  L->errorJmp = &lj;
   PS3_LUA_CORE_TRACE("Lua core: rawrunprotected handler installed");]=]
-        _ps3_lua_do_content "\${_ps3_lua_do_content}")
+        _ps3_lua_do_content "${_ps3_lua_do_content}")
 
       string(REPLACE
         [=[    (*f)(L, ud);]=]
         [=[    PS3_LUA_CORE_TRACE("Lua core: protected callback body entered");
     (*f)(L, ud);
     PS3_LUA_CORE_TRACE("Lua core: protected callback returned normally");]=]
-        _ps3_lua_do_content "\${_ps3_lua_do_content}")
+        _ps3_lua_do_content "${_ps3_lua_do_content}")
 
       string(REPLACE
         [=[  L->errorJmp = lj.previous;  /* restore old error handler */]=]
         [=[  PS3_LUA_CORE_TRACE("Lua core: LUAI_TRY completed");
   L->errorJmp = lj.previous;  /* restore old error handler */
   PS3_LUA_CORE_TRACE("Lua core: error handler restored");]=]
-        _ps3_lua_do_content "\${_ps3_lua_do_content}")
+        _ps3_lua_do_content "${_ps3_lua_do_content}")
 
       string(REPLACE
         [=[  L->nCcalls = oldnCcalls;]=]
         [=[  L->nCcalls = oldnCcalls;
   PS3_LUA_CORE_TRACE("Lua core: C-call depth restored");]=]
-        _ps3_lua_do_content "\${_ps3_lua_do_content}")
+        _ps3_lua_do_content "${_ps3_lua_do_content}")
     endif()
 
     # A normal return from f must be LUA_OK. Keep a volatile flag because
@@ -138,7 +138,7 @@ extern void PS3LuaRawBootLogStatus(int status);
   volatile int ps3_callback_returned = 0; /* PS3 protected-call status normalization */
   int ps3_final_status;
 #endif]=]
-      _ps3_lua_do_content "\${_ps3_lua_do_content}")
+      _ps3_lua_do_content "${_ps3_lua_do_content}")
 
     string(REPLACE
       [=[    (*f)(L, ud);]=]
@@ -146,7 +146,7 @@ extern void PS3LuaRawBootLogStatus(int status);
 #ifdef __PS3__
     ps3_callback_returned = 1;
 #endif]=]
-      _ps3_lua_do_content "\${_ps3_lua_do_content}")
+      _ps3_lua_do_content "${_ps3_lua_do_content}")
 
     # Preserve a numeric report of the original lj.status, then derive the
     # return value from whether the callback actually completed normally.
@@ -155,7 +155,7 @@ extern void PS3LuaRawBootLogStatus(int status);
         [=[  return lj.status;]=]
         [=[  PS3_LUA_CORE_TRACE(lj.status == LUA_OK ? "Lua core: rawrunprotected returning LUA_OK" : "Lua core: rawrunprotected returning error");
   return lj.status;]=]
-        _ps3_lua_do_content "\${_ps3_lua_do_content}")
+        _ps3_lua_do_content "${_ps3_lua_do_content}")
     endif()
 
     string(REPLACE
@@ -168,14 +168,14 @@ extern void PS3LuaRawBootLogStatus(int status);
 #else
   return lj.status;
 #endif]=]
-      _ps3_lua_do_content "\${_ps3_lua_do_content}")
+      _ps3_lua_do_content "${_ps3_lua_do_content}")
 
     if(NOT _ps3_lua_do_content MATCHES "ps3_callback_returned = 1" OR
        NOT _ps3_lua_do_content MATCHES "PS3_LUA_CORE_TRACE_STATUS")
       message(FATAL_ERROR "Failed to apply PS3 Lua protected-call status normalization")
     endif()
 
-    file(WRITE "\${_ps3_lua_do_source}" "\${_ps3_lua_do_content}")
+    file(WRITE "${_ps3_lua_do_source}" "${_ps3_lua_do_content}")
   endif()
 
 endif()
