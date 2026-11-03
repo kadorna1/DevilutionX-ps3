@@ -60,6 +60,31 @@ if(CMAKE_SYSTEM_NAME STREQUAL "PS3")
 
     file(WRITE "${_ps3_lua_state_source}" "${_ps3_lua_state_content}")
   endif()
+  # Trace the protected-call boundary separately from f_luaopen. The last
+  # hardware log reached the end of f_luaopen but not the caller.
+  set(_ps3_lua_do_source "\${lua_SOURCE_DIR}/lua-5.4.7/src/ldo.c")
+  if(NOT EXISTS "\${_ps3_lua_do_source}")
+    message(FATAL_ERROR "Could not find fetched Lua source: \${_ps3_lua_do_source}")
+  endif()
+
+  file(READ "\${_ps3_lua_do_source}" _ps3_lua_do_content)
+  if(NOT _ps3_lua_do_content MATCHES "Lua core: rawrunprotected returning")
+    string(REPLACE
+      "#include \"ldo.h\""
+      "#include \"ldo.h\"\n\n#ifdef __PS3__\nextern void PS3LuaRawBootLogNoSync(const char *message);\n#define PS3_LUA_CORE_TRACE(message) PS3LuaRawBootLogNoSync(message)\n#else\n#define PS3_LUA_CORE_TRACE(message) ((void)0)\n#endif /* PS3 protected-call trace */"
+      _ps3_lua_do_content "\${_ps3_lua_do_content}")
+
+    string(REPLACE
+      "int luaD_rawrunprotected (lua_State *L, Pfunc f, void *ud) {\n  l_uint32 oldnCcalls = L->nCcalls;\n  struct lua_longjmp lj;\n  lj.status = LUA_OK;\n  lj.previous = L->errorJmp;  /* chain new error handler */\n  L->errorJmp = &lj;\n  LUAI_TRY(L, &lj,\n    (*f)(L, ud);\n  );\n  L->errorJmp = lj.previous;  /* restore old error handler */\n  L->nCcalls = oldnCcalls;\n  return lj.status;\n}"
+      "int luaD_rawrunprotected (lua_State *L, Pfunc f, void *ud) {\n  PS3_LUA_CORE_TRACE(\"Lua core: rawrunprotected entered\");\n  l_uint32 oldnCcalls = L->nCcalls;\n  struct lua_longjmp lj;\n  lj.status = LUA_OK;\n  lj.previous = L->errorJmp;  /* chain new error handler */\n  L->errorJmp = &lj;\n  PS3_LUA_CORE_TRACE(\"Lua core: rawrunprotected handler installed\");\n  LUAI_TRY(L, &lj,\n    PS3_LUA_CORE_TRACE(\"Lua core: protected callback body entered\");\n    (*f)(L, ud);\n    PS3_LUA_CORE_TRACE(\"Lua core: protected callback returned normally\");\n  );\n  PS3_LUA_CORE_TRACE(\"Lua core: LUAI_TRY completed\");\n  L->errorJmp = lj.previous;  /* restore old error handler */\n  PS3_LUA_CORE_TRACE(\"Lua core: error handler restored\");\n  L->nCcalls = oldnCcalls;\n  PS3_LUA_CORE_TRACE(\"Lua core: C-call depth restored\");\n  PS3_LUA_CORE_TRACE(lj.status == LUA_OK ? \"Lua core: rawrunprotected returning LUA_OK\" : \"Lua core: rawrunprotected returning error\");\n  return lj.status;\n}";
+    if(NOT _ps3_lua_do_content MATCHES "Lua core: protected callback returned normally" OR
+       NOT _ps3_lua_do_content MATCHES "Lua core: LUAI_TRY completed")
+      message(FATAL_ERROR "Failed to apply PS3 Lua protected-call trace patch")
+    endif()
+
+    file(WRITE "\${_ps3_lua_do_source}" "\${_ps3_lua_do_content}")
+  endif()
+
 endif()
 
 # Needed for sol2
