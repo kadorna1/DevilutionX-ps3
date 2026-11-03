@@ -13,6 +13,7 @@ endif()
 
 # PS3 SDL2 uses the PSL1GHT RSX renderer. Keep upscaling enabled (the
 # renderer is the presentation path on this SDL backend).
+set(DEVILUTIONX_DISPLAY_TEXTURE_FORMAT SDL_PIXELFORMAT_ARGB8888 CACHE STRING "PS3 RSX texture format" FORCE)
 add_compile_definitions(
   __PS3__
   DEVILUTIONX_PS3_TITLE_ID="${DEVILUTIONX_PS3_TITLE_ID}"
