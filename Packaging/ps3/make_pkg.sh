@@ -79,16 +79,33 @@ echo "Preparing PS3 SELF..."
 "$SELF" "$WORK/devilutionx.stripped.elf" "$PKGDIR/USRDIR/EBOOT.BIN" "$CONTENT_ID"
 [[ -s "$PKGDIR/USRDIR/EBOOT.BIN" ]] || die "make_self_npdrm did not produce EBOOT.BIN"
 
-echo "Verifying SELF header..."
+echo "Verifying NPDRM SELF header..."
 python3 - "$PKGDIR/USRDIR/EBOOT.BIN" <<'PY'
 from pathlib import Path
+import struct
 import sys
+
 p = Path(sys.argv[1])
 with p.open("rb") as f:
-    magic = f.read(9)
-if magic != b"SCE\0\0\0\0\x02\x80":
-    raise SystemExit(f"unexpected EBOOT.BIN SELF header: {magic.hex()}")
-print(f"SELF OK: {p.stat().st_size} bytes")
+    header = f.read(0x80)
+if len(header) < 0x80 or header[:4] != b"SCE\0":
+    raise SystemExit("EBOOT.BIN is missing a valid SELF header")
+header_version, flags, self_type = struct.unpack(">IHH", header[4:12])
+if (header_version, flags, self_type) != (2, 1, 1):
+    raise SystemExit(
+        f"unexpected SELF fields: version={header_version}, "
+        f"flags=0x{flags:04x}, type={self_type}"
+    )
+app_info_offset = struct.unpack(">Q", header[40:48])[0]
+with p.open("rb") as f:
+    f.seek(app_info_offset + 12)
+    app_type_bytes = f.read(4)
+if len(app_type_bytes) != 4:
+    raise SystemExit("EBOOT.BIN SELF is missing its AppInfo record")
+app_type = struct.unpack(">I", app_type_bytes)[0]
+if app_type != 8:
+    raise SystemExit(f"EBOOT.BIN is not NPDRM (AppInfo appType={app_type})")
+print(f"NPDRM SELF OK: {p.stat().st_size} bytes (appType={app_type})")
 PY
 
 # Ship DevilutionX's own redistributable engine assets, but never original
