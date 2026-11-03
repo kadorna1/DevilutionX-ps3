@@ -44,7 +44,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "PS3")
       _ps3_lua_state_content "${_ps3_lua_state_content}")
 
     string(REPLACE
-      "static void f_luaopen (lua_State *L, void *ud) {\n  global_State *g = G(L);\n  UNUSED(ud);\n  stack_init(L, L);  /* initialize stack */\n  init_registry(L, g);\n  luaS_init(L);\n  luaT_init(L);\n  luaX_init(L);\n  g->gcstp = 0;  /* allow gc */\n  setnilvalue(&g->nilvalue);  /* now state is complete */\n  luai_userstateopen(L);\n}"
+      "static void f_luaopen (lua_State *L, void *ud) {\n  global_State *g = G(L);\n  UNUSED(ud);\n  stack_init(L, L);  /* init stack */\n  init_registry(L, g);\n  luaS_init(L);\n  luaT_init(L);\n  luaX_init(L);\n  g->gcstp = 0;  /* allow gc */\n  setnilvalue(&g->nilvalue);  /* now state is complete */\n  luai_userstateopen(L);\n}"
       "static void f_luaopen (lua_State *L, void *ud) {\n  global_State *g = G(L);\n  UNUSED(ud);\n  PS3_LUA_CORE_TRACE(\"Lua core: f_luaopen entered\");\n  stack_init(L, L);  /* initialize stack */\n  PS3_LUA_CORE_TRACE(\"Lua core: stack_init complete\");\n  init_registry(L, g);\n  PS3_LUA_CORE_TRACE(\"Lua core: init_registry complete\");\n  luaS_init(L);\n  PS3_LUA_CORE_TRACE(\"Lua core: luaS_init complete\");\n  luaT_init(L);\n  PS3_LUA_CORE_TRACE(\"Lua core: luaT_init complete\");\n  luaX_init(L);\n  PS3_LUA_CORE_TRACE(\"Lua core: luaX_init complete\");\n  g->gcstp = 0;  /* allow gc */\n  PS3_LUA_CORE_TRACE(\"Lua core: GC enabled\");\n  setnilvalue(&g->nilvalue);  /* now state is complete */\n  PS3_LUA_CORE_TRACE(\"Lua core: state marked complete\");\n  luai_userstateopen(L);\n  PS3_LUA_CORE_TRACE(\"Lua core: f_luaopen returning\");\n}"
       _ps3_lua_state_content "${_ps3_lua_state_content}")
 
