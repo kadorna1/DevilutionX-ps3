@@ -178,6 +178,60 @@ extern void PS3LuaRawBootLogStatus(int status);
     file(WRITE "${_ps3_lua_do_source}" "${_ps3_lua_do_content}")
   endif()
 
+
+  # The protected-call trace is applied on fresh and cached source trees.
+  # Force Lua's ISO C setjmp/longjmp backend on PS3, even if the C compiler
+  # happens to define __cplusplus. Remove the earlier diagnostic-only status
+  # override: real Lua errors must keep their original status.
+  file(READ "${_ps3_lua_do_source}" _ps3_lua_do_content)
+
+  string(REPLACE
+    [=[extern void PS3LuaRawBootLogStatus(int status);
+#define PS3_LUA_CORE_TRACE_STATUS(status) PS3LuaRawBootLogStatus(status)]=]
+    [=[extern void PS3LuaRawBootLogStatus(int status, int callbackReturned);
+#define PS3_LUA_CORE_TRACE_STATUS(status, callbackReturned) PS3LuaRawBootLogStatus(status, callbackReturned)]=]
+    _ps3_lua_do_content "${_ps3_lua_do_content}")
+  string(REPLACE
+    [=[#define PS3_LUA_CORE_TRACE_STATUS(status) ((void)0)]=]
+    [=[#define PS3_LUA_CORE_TRACE_STATUS(status, callbackReturned) ((void)0)]=]
+    _ps3_lua_do_content "${_ps3_lua_do_content}")
+  string(REPLACE
+    [=[  PS3_LUA_CORE_TRACE("Lua core: rawrunprotected handler installed");]=]
+    [=[#if defined(__cplusplus) && !defined(LUA_USE_LONGJMP)
+  PS3_LUA_CORE_TRACE("Lua core: protected backend is C++ exceptions");
+#elif defined(LUA_USE_POSIX)
+  PS3_LUA_CORE_TRACE("Lua core: protected backend is POSIX longjmp");
+#else
+  PS3_LUA_CORE_TRACE("Lua core: protected backend is ISO C longjmp");
+#endif
+  PS3_LUA_CORE_TRACE("Lua core: rawrunprotected handler installed");]=]
+    _ps3_lua_do_content "${_ps3_lua_do_content}")
+  string(REPLACE
+    [=[  volatile int ps3_callback_returned = 0; /* PS3 protected-call status normalization */
+  int ps3_final_status;]=]
+    [=[  volatile int ps3_callback_returned = 0;]=]
+    _ps3_lua_do_content "${_ps3_lua_do_content}")
+  string(REPLACE
+    [=[#ifdef __PS3__
+  PS3_LUA_CORE_TRACE_STATUS(lj.status);
+  ps3_final_status = ps3_callback_returned ? LUA_OK : lj.status;
+  return ps3_final_status;
+#else
+  return lj.status;
+#endif]=]
+    [=[#ifdef __PS3__
+  PS3_LUA_CORE_TRACE_STATUS(lj.status, ps3_callback_returned);
+#endif
+  return lj.status;]=]
+    _ps3_lua_do_content "${_ps3_lua_do_content}")
+
+  if(NOT _ps3_lua_do_content MATCHES "PS3 protected backend is ISO C longjmp" AND
+     NOT _ps3_lua_do_content MATCHES "PS3_LUA_CORE_TRACE_STATUS\(lj.status, ps3_callback_returned\)")
+    message(FATAL_ERROR "Failed to update PS3 Lua protected-call backend diagnostics")
+  endif()
+
+  file(WRITE "${_ps3_lua_do_source}" "${_ps3_lua_do_content}")
+
 endif()
 
 # Needed for sol2
@@ -193,7 +247,7 @@ elseif(EMSCRIPTEN)
   target_compile_options(lua_static PUBLIC -pthread)
   target_link_options(lua_static PUBLIC -pthread)
 elseif(TARGET_PLATFORM STREQUAL "dos")
-  target_compile_definitions(lua_static PUBLIC -DLUA_USE_C89)
+  target_compile_definitions(lua_static PUBLIC -DLUA_USE_C89 -DLUA_USE_LONGJMP)
 elseif(ANDROID AND ("${ANDROID_ABI}" STREQUAL "armeabi-v7a" OR "${ANDROID_ABI}" STREQUAL "x86"))
   target_compile_definitions(lua_static PUBLIC -DLUA_USE_C89)
 elseif(NINTENDO_3DS OR VITA OR NINTENDO_SWITCH OR NXDK)
