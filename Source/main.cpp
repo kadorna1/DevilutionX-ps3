@@ -189,11 +189,21 @@ __attribute__((constructor(103))) void PS3EarlyLogConstructor()
 
 } // namespace
 
-extern "C" void PS3LuaRawBootLog(const char *message)
+extern "C" void PS3LuaRawBootLogNoSync(const char *message)
 {
 	PS3WriteBootLog(message);
+}
+
+extern "C" void PS3LuaRawBootLogSync()
+{
 	if (PS3LogFd >= 0)
 		(void)PS3SysLv2FsFsync(PS3LogFd);
+}
+
+extern "C" void PS3LuaRawBootLog(const char *message)
+{
+	PS3LuaRawBootLogNoSync(message);
+	PS3LuaRawBootLogSync();
 }
 #endif
 
