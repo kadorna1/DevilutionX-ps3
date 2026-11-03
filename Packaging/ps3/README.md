@@ -54,6 +54,17 @@ from a copy of the original game that you are entitled to use.
 The PS3 build stores saves and configuration in the title's writable
 `USRDIR` directory. The title ID is `DEVILUT00`.
 
+## XMB media assets
+
+The repository keeps PS3 XMB media in `assets/xmb/`. The generated package places these files beside `PARAM.SFO` at the package root:
+
+- `ICON0.PNG` — the actual XMB static icon, 320×176 pixels.
+- `LOGO0.PNG` — a second copy of the requested logo artwork, 320×176 pixels.
+- `PIC1.PNG` — XMB background, 1920×1080 pixels.
+- `SND0.AT3` — XMB highlight sound; the supplied file is copied byte-for-byte.
+
+`LOGO0.PNG` is retained as requested, but PS3 XMB uses `ICON0.PNG` for the static icon.
+
 ## Startup log
 
 Every PS3 launch recreates a plain-text startup log at:

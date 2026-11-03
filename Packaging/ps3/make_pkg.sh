@@ -119,9 +119,41 @@ fi
 if [[ -s "$BUILD_DIR/devilutionx.mpq" ]]; then
   cp "$BUILD_DIR/devilutionx.mpq" "$PKGDIR/USRDIR/"
 fi
-if [[ -s "$PS3DEV/bin/ICON0.PNG" ]]; then
-  cp "$PS3DEV/bin/ICON0.PNG" "$PKGDIR/ICON0.PNG"
-fi
+
+echo "Adding PS3 XMB media..."
+XMB_DIR="$ROOT/assets/xmb"
+for asset in ICON0.PNG LOGO0.PNG PIC1.PNG SND0.AT3; do
+  [[ -s "$XMB_DIR/$asset" ]] || die "required XMB asset missing: $XMB_DIR/$asset"
+  cp "$XMB_DIR/$asset" "$PKGDIR/$asset"
+done
+python3 - "$PKGDIR" <<'PY'
+from pathlib import Path
+import struct
+import sys
+
+root = Path(sys.argv[1])
+expected = {
+    "ICON0.PNG": (320, 176),
+    "LOGO0.PNG": (320, 176),
+    "PIC1.PNG": (1920, 1080),
+}
+for name, dimensions in expected.items():
+    path = root / name
+    with path.open("rb") as image:
+        header = image.read(24)
+    if len(header) < 24 or header[:8] != bytes([137, 80, 78, 71, 13, 10, 26, 10]):
+        raise SystemExit(f"{name} is not a PNG file")
+    actual = struct.unpack(">II", header[16:24])
+    if actual != dimensions:
+        raise SystemExit(f"{name} has dimensions {actual}, expected {dimensions}")
+    print(f"XMB image OK: {name} {actual[0]}x{actual[1]}")
+
+sound = root / "SND0.AT3"
+if sound.stat().st_size > 2_400_000:
+    raise SystemExit(f"SND0.AT3 exceeds the PS3 XMB sound size limit: {sound.stat().st_size}")
+print(f"XMB sound OK: SND0.AT3 ({sound.stat().st_size} bytes)")
+PY
+cmp -s "$XMB_DIR/SND0.AT3" "$PKGDIR/SND0.AT3" || die "SND0.AT3 changed during packaging"
 
 echo "Creating PARAM.SFO..."
 sfo_ok=0
