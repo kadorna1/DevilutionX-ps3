@@ -59,7 +59,7 @@ set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
 set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
 
 # PSL1GHT programs use the Cell PPU ABI and its small TOC model.
-set(_ps3_cpu_flags "-mcpu=cell -mno-altivec -fno-strict-aliasing -fno-common -mminimal-toc")
+set(_ps3_cpu_flags "-mcpu=cell -mno-altivec -fno-strict-aliasing -fno-common -fno-gnu-unique -mminimal-toc")
 set(CMAKE_C_FLAGS_INIT "${_ps3_cpu_flags}")
 set(CMAKE_CXX_FLAGS_INIT "${_ps3_cpu_flags}")
 set(CMAKE_EXE_LINKER_FLAGS_INIT
