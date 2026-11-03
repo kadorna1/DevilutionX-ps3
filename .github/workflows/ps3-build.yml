@@ -95,9 +95,10 @@ jobs:
         run: |
           set -euo pipefail
           if [[ "${{ steps.ps3-build-cache.outputs.cache-hit }}" == "true" ]]; then
-            echo "Reusing the cached CMake/Ninja build tree and already-built PPU dependencies."
+            echo "Exact commit cache restored; already-built PPU dependencies are reusable."
           else
-            echo "No reusable PS3 build tree was found; this run will build dependencies and the game once."
+            echo "No exact-SHA cache key; actions/cache may have restored the latest branch cache."
+            echo "The incremental source-hash scan below determines which translation units need rebuilding."
           fi
           bash Packaging/ps3/build.sh --build-only build-ps3
 
@@ -145,7 +146,7 @@ jobs:
 
           path = Path(sys.argv[1])
           header = path.read_bytes()[:0x80]
-          if len(header) < 0x80 or header[:4] != b"\\x7fPKG":
+          if len(header) < 0x80 or header[:4] != b"\x7fPKG":
               raise SystemExit("finalized package has an invalid PKG header")
           revision = struct.unpack(">H", header[4:6])[0]
           if revision != 0x8000:
