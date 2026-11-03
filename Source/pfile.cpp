@@ -178,14 +178,23 @@ void EncodeHero(SaveWriter &saveWriter, const PlayerPack *pack)
 	saveWriter.WriteFile("hero", packed.get(), packedLen);
 }
 
-SaveWriter GetSaveWriter(uint32_t saveNum, bool carryForward = true)
+SaveWriter GetSaveWriter(uint32_t saveNum, [[maybe_unused]] bool carryForward = true)
 {
+#if defined(UNPACKED_SAVES)
+	// Unpacked saves are ordinary directories; there is no MPQ archive to carry forward.
+	return SaveWriter(GetSavePath(saveNum));
+#else
 	return SaveWriter(GetSavePath(saveNum), carryForward);
+#endif
 }
 
 SaveWriter GetStashWriter()
 {
+#if defined(UNPACKED_SAVES)
+	return SaveWriter(GetStashSavePath());
+#else
 	return SaveWriter(GetStashSavePath(), /*carryForward=*/true);
+#endif
 }
 
 #ifndef DISABLE_DEMOMODE
