@@ -188,6 +188,11 @@ __attribute__((constructor(103))) void PS3EarlyLogConstructor()
 }
 
 } // namespace
+
+extern "C" void PS3LuaRawBootLog(const char *message)
+{
+	PS3WriteBootLog(message);
+}
 #endif
 
 #if !defined(__APPLE__)
