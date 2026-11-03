@@ -191,6 +191,19 @@ extern void PS3LuaRawBootLogStatus(int status);
     [=[extern void PS3LuaRawBootLogStatus(int status, int callbackReturned);
 #define PS3_LUA_CORE_TRACE_STATUS(status, callbackReturned) PS3LuaRawBootLogStatus(status, callbackReturned)]=]
     _ps3_lua_do_content "${_ps3_lua_do_content}")
+  if(NOT _ps3_lua_do_content MATCHES "PS3_LUA_CORE_TRACE_STATUS\\(status, callbackReturned\\)")
+    string(REPLACE
+      [=[#define PS3_LUA_CORE_TRACE(message) PS3LuaRawBootLogNoSync(message)]=]
+      [=[#define PS3_LUA_CORE_TRACE(message) PS3LuaRawBootLogNoSync(message)
+extern void PS3LuaRawBootLogStatus(int status, int callbackReturned);
+#define PS3_LUA_CORE_TRACE_STATUS(status, callbackReturned) PS3LuaRawBootLogStatus(status, callbackReturned)]=]
+      _ps3_lua_do_content "${_ps3_lua_do_content}")
+    string(REPLACE
+      [=[#define PS3_LUA_CORE_TRACE(message) ((void)0)]=]
+      [=[#define PS3_LUA_CORE_TRACE(message) ((void)0)
+#define PS3_LUA_CORE_TRACE_STATUS(status, callbackReturned) ((void)0)]=]
+      _ps3_lua_do_content "${_ps3_lua_do_content}")
+  endif()
   string(REPLACE
     [=[#define PS3_LUA_CORE_TRACE_STATUS(status) ((void)0)]=]
     [=[#define PS3_LUA_CORE_TRACE_STATUS(status, callbackReturned) ((void)0)]=]
@@ -281,7 +294,7 @@ elseif(EMSCRIPTEN)
   target_compile_options(lua_static PUBLIC -pthread)
   target_link_options(lua_static PUBLIC -pthread)
 elseif(TARGET_PLATFORM STREQUAL "dos")
-  target_compile_definitions(lua_static PUBLIC -DLUA_USE_C89 -DLUA_USE_LONGJMP)
+  target_compile_definitions(lua_static PUBLIC -DLUA_USE_C89)
 elseif(ANDROID AND ("${ANDROID_ABI}" STREQUAL "armeabi-v7a" OR "${ANDROID_ABI}" STREQUAL "x86"))
   target_compile_definitions(lua_static PUBLIC -DLUA_USE_C89)
 elseif(NINTENDO_3DS OR VITA OR NINTENDO_SWITCH OR NXDK)
