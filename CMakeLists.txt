@@ -360,6 +360,13 @@ set(CMAKE_THREAD_PREFER_PTHREAD ON)
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
 
+if(CMAKE_SYSTEM_NAME STREQUAL "PS3")
+  # CMake 3.28's generic finder can select -lpthreads on PSL1GHT,
+  # but the SDK's embedded POSIX threading library is libpthread.a.
+  set(CMAKE_THREAD_LIBS_INIT "-lpthread")
+  set_property(TARGET Threads::Threads PROPERTY INTERFACE_LINK_LIBRARIES "-lpthread")
+endif()
+
 # Dependencies must be included after Platforms.
 include(Dependencies)
 
