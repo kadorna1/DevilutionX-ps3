@@ -50,6 +50,7 @@ jobs:
           test -x "$PS3DEV/ppu/bin/ppu-gcc"
           test -x "$PS3DEV/ppu/bin/ppu-g++"
           command -v sdl2-config
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
           ppu-gcc --version | head -n 1
           ppu-g++ --version | head -n 1
           sdl2-config --version
