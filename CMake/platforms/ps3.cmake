@@ -61,6 +61,10 @@ set(BUILD_MOD_MPQS OFF CACHE BOOL "" FORCE)
 # Use unpacked save files on the PS3 HDD instead of MPQ-contained saves.
 set(UNPACKED_SAVES ON CACHE BOOL "" FORCE)
 
+# Cell PPU supports AltiVec, not VSX. libpng otherwise selects VSX kernels
+# solely because the target processor is powerpc64; omit those sources.
+set(PNG_POWERPC_VSX off CACHE STRING "Disable unsupported VSX on Cell PPU" FORCE)
+
 # Save a little main-memory footprint on the PS3.
 set(DEVILUTIONX_PALETTE_TRANSPARENCY_BLACK_16_LUT OFF CACHE BOOL "" FORCE)
 
