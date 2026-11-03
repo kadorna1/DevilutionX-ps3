@@ -90,7 +90,7 @@ void InitializePS3Log()
 		// Record earlier failures in the persistent log, rather than only on stderr.
 		for (unsigned int failedIndex = 0; failedIndex < index; ++failedIndex) {
 			if (openErrors[failedIndex] != 0) {
-				std::fprintf(PS3LogFile, "[PS3][BOOT] fopen failed: %s (errno=%d)\\n", candidates[failedIndex], openErrors[failedIndex]);
+				std::fprintf(PS3LogFile, "[PS3][BOOT] fopen failed: %s (errno=%d)\n", candidates[failedIndex], openErrors[failedIndex]);
 			}
 		}
 		PS3WriteBootLog(PS3LogPath);
@@ -99,11 +99,8 @@ void InitializePS3Log()
 	}
 
 	for (unsigned int index = 0; index < sizeof(candidates) / sizeof(candidates[0]); ++index) {
-		std::fprintf(stderr, "[PS3][BOOT] fopen failed: %s (errno=%d)\\n", candidates[index], openErrors[index]);
+		std::fprintf(stderr, "[PS3][BOOT] fopen failed: %s (errno=%d)\n", candidates[index], openErrors[index]);
 	}
-		return;
-	}
-
 	std::fprintf(stderr, "[PS3][BOOT] FATAL: unable to create a log in any candidate location.\n");
 	std::fflush(stderr);
 }
