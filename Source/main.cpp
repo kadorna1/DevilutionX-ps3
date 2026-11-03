@@ -192,6 +192,8 @@ __attribute__((constructor(103))) void PS3EarlyLogConstructor()
 extern "C" void PS3LuaRawBootLog(const char *message)
 {
 	PS3WriteBootLog(message);
+	if (PS3LogFd >= 0)
+		(void)PS3SysLv2FsFsync(PS3LogFd);
 }
 #endif
 
