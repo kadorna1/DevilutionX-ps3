@@ -48,6 +48,7 @@ find_tool() {
 [[ -f "$SFO_XML" ]] || die "PS3 SFO template not found: $SFO_XML"
 
 STRIP="$(find_tool ppu-strip)" || die "ppu-strip not found"
+SPRX="$(find_tool sprxlinker)" || die "sprxlinker not found"
 SELF="$(find_tool make_self_npdrm)" || die "make_self_npdrm not found"
 # Prefer the bundled Python helpers, but retry alternatives if their
 # runtime/dependencies are unavailable in the builder image.
@@ -72,10 +73,27 @@ mkdir -p "$PKGDIR/USRDIR" "$OUT_DIR"
 
 echo "Preparing PS3 SELF..."
 "$STRIP" --strip-all "$ELF" -o "$WORK/devilutionx.stripped.elf"
-# The linked main application is a normal PS3 executable, not an SPRX module.
-# sprxlinker requires the PRX-only .sys_proc_prx_param section, which the
-# application ELF intentionally does not contain. make_self_npdrm consumes
-# the executable ELF directly and creates the EBOOT.BIN SELF wrapper.
+# Follow PSL1GHT's standard PPU executable pipeline. sprxlinker is required
+# for the main EBOOT as well: it sets the Cell LV2 ELF OSABI, repairs import
+# stub counts, and encodes PPU function descriptors before SELF encryption.
+"$SPRX" "$WORK/devilutionx.stripped.elf"
+python3 - "$WORK/devilutionx.stripped.elf" <<'PY'
+from pathlib import Path
+import struct
+import sys
+
+elf = Path(sys.argv[1]).read_bytes()
+if len(elf) < 64 or elf[:4] != b"\\x7fELF":
+    raise SystemExit("sprxlinker output is not a valid ELF")
+if (elf[4], elf[5], elf[7]) != (2, 2, 102):
+    raise SystemExit(
+        "sprxlinker did not mark the ELF as 64-bit big-endian Cell LV2: "
+        f"class={elf[4]}, data={elf[5]}, osabi={elf[7]}"
+    )
+if struct.unpack(">HH", elf[16:20]) != (2, 21):
+    raise SystemExit("sprxlinker output is not a PowerPC64 executable")
+print("PSL1GHT ELF post-link processing verified: ELFOSABI_CELLLV2 (102)")
+PY
 "$SELF" "$WORK/devilutionx.stripped.elf" "$PKGDIR/USRDIR/EBOOT.BIN" "$CONTENT_ID"
 [[ -s "$PKGDIR/USRDIR/EBOOT.BIN" ]] || die "make_self_npdrm did not produce EBOOT.BIN"
 
