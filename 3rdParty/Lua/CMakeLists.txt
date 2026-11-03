@@ -46,6 +46,11 @@ elseif(ANDROID AND ("${ANDROID_ABI}" STREQUAL "armeabi-v7a" OR "${ANDROID_ABI}" 
   target_compile_definitions(lua_static PUBLIC -DLUA_USE_C89)
 elseif(NINTENDO_3DS OR VITA OR NINTENDO_SWITCH OR NXDK)
   target_compile_definitions(lua_static PUBLIC -DLUA_USE_C89)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "PS3")
+  # The PSL1GHT PPU toolchain's limits headers do not expose LLONG_MAX.
+  # Lua's C89-number mode uses 'long', which is 64-bit on the PPU ABI.
+  # PUBLIC keeps sol2 and all Lua consumers on the same integer ABI.
+  target_compile_definitions(lua_static PUBLIC -DLUA_USE_C89)
 elseif(IOS)
   target_compile_definitions(lua_static PUBLIC -DLUA_USE_IOS)
 endif()
