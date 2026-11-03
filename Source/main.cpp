@@ -81,13 +81,26 @@ void PS3RawWriteToTty(const char *text, u32 length)
 {
 	if (text == nullptr || length == 0)
 		return;
-	u32 written = 0;
-	(void)PS3SysTtyWrite(0, text, length, &written);
+	while (length > 0) {
+		u32 written = 0;
+		const s32 result = PS3SysTtyWrite(0, text, length, &written);
+		if (result != 0 || written == 0)
+			return;
+		text += written;
+		length -= written;
+	}
 }
 
 void PS3RawWrite(const char *text, u64 length)
 {
 	PS3RawWriteToFd(PS3LogFd, text, length);
+	// Keep a live TTY copy even when a persistent file opens successfully.
+	while (length > 0) {
+		const u32 chunk = length > 0xFFFFFFFFULL ? 0xFFFFFFFFU : static_cast<u32>(length);
+		PS3RawWriteToTty(text, chunk);
+		text += chunk;
+		length -= chunk;
+	}
 }
 
 void PS3RawWrite(const char *text)
@@ -148,11 +161,19 @@ void InitializePS3Log()
 		return;
 
 	// Bypass Newlib entirely: these wrappers issue LV2 syscalls directly.
+	static const char startupMarker[] = "[PS3][BOOT] logger constructor reached\n";
+	PS3RawWriteToTty(startupMarker, sizeof(startupMarker) - 1);
+
 	static const char *const candidates[] = {
 	    "/dev_hdd0/game/" DEVILUTIONX_PS3_TITLE_ID "/USRDIR/devilutionx-ps3.log",
 	    "/dev_hdd0/tmp/devilutionx-ps3.log",
 	    "/dev_hdd0/game/" DEVILUTIONX_PS3_TITLE_ID "/devilutionx-ps3.log",
 	    "/dev_usb000/devilutionx-ps3.log",
+	    "/dev_usb001/devilutionx-ps3.log",
+	    "/dev_usb002/devilutionx-ps3.log",
+	    "/dev_usb003/devilutionx-ps3.log",
+	    "/dev_usb004/devilutionx-ps3.log",
+	    "/dev_usb005/devilutionx-ps3.log",
 	    "devilutionx-ps3.log",
 	};
 	s32 openResults[sizeof(candidates) / sizeof(candidates[0])] = {};
