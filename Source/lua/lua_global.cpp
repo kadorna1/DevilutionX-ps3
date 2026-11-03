@@ -1,6 +1,7 @@
 #include "lua/lua_global.hpp"
 
 #include <algorithm>
+#include <cstdlib>
 #include <expected>
 #include <optional>
 #include <string>
@@ -9,7 +10,6 @@
 
 #include <ankerl/unordered_dense.h>
 #include <function_ref.hpp>
-#include <lauxlib.h>
 #include <sol/bytecode.hpp>
 #include <sol/debug.hpp>
 #include <sol/environment.hpp>
@@ -54,7 +54,8 @@ namespace devilution {
 
 #ifdef __PS3__
 #define PS3_LUA_BOOT_LOG(message) LogInfo("PS3 boot: Lua: {}", message)
-extern "C" void PS3LuaRawBootLog(const char *message);
+extern "C" void PS3LuaRawBootLogNoSync(const char *message);
+extern "C" void PS3LuaRawBootLogSync();
 #else
 #define PS3_LUA_BOOT_LOG(message) ((void)0)
 #endif
@@ -62,8 +63,30 @@ extern "C" void PS3LuaRawBootLog(const char *message);
 namespace {
 
 #ifdef __PS3__
-// This diagnostic build intentionally uses luaL_newstate() and Lua's stock
-// free/realloc allocator to isolate the previous custom allocator path.
+struct LuaAllocatorStats {
+	size_t calls = 0;
+};
+
+// Mirrors Lua 5.4.7's luaL_newstate allocator (free/realloc), adding only
+// no-fsync checkpoints around the first allocations to locate the stall.
+void *PS3LuaAllocator(void *userData, void *pointer, size_t /*oldSize*/, size_t newSize)
+{
+	auto *stats = static_cast<LuaAllocatorStats *>(userData);
+	if (newSize == 0) {
+		std::free(pointer);
+		return nullptr;
+	}
+
+	const size_t call = ++stats->calls;
+	if (call <= 16)
+		PS3LuaRawBootLogNoSync("Lua allocator: realloc begin");
+	void *const result = std::realloc(pointer, newSize);
+	if (call <= 16)
+		PS3LuaRawBootLogNoSync(result != nullptr
+		        ? "Lua allocator: realloc returned non-null"
+		        : "Lua allocator: realloc returned null");
+	return result;
+}
 #endif
 
 void LuaPanic(const std::optional<std::string> &message)
@@ -86,7 +109,9 @@ struct LuaStateOwner {
 
 struct LuaState {
 #ifdef __PS3__
-	// Declared first so it is destroyed last, after all sol2 references.
+	// Keep allocator userdata alive until Lua has released every allocation.
+	LuaAllocatorStats allocatorStats;
+	// Declare the owner before sol2 references so it is destroyed after them.
 	LuaStateOwner owner;
 	std::optional<sol::state_view> luaView;
 #else
@@ -103,17 +128,19 @@ struct LuaState {
 #endif
 	{
 #ifdef __PS3__
-		PS3LuaRawBootLog("Lua VM: luaL_newstate begin");
-		owner.state = luaL_newstate();
+		PS3LuaRawBootLogNoSync("Lua VM: lua_newstate begin");
+		owner.state = lua_newstate(PS3LuaAllocator, &allocatorStats);
 		if (owner.state == nullptr) {
-			PS3LuaRawBootLog("Lua VM: luaL_newstate returned null");
+			PS3LuaRawBootLogNoSync("Lua VM: lua_newstate returned null");
+			PS3LuaRawBootLogSync();
 			return;
 		}
-		PS3LuaRawBootLog("Lua VM: luaL_newstate returned valid state");
+		PS3LuaRawBootLogNoSync("Lua VM: lua_newstate returned valid state");
 		luaView.emplace(owner.state);
-		PS3LuaRawBootLog("Lua VM: sol2 state_view construction completed");
+		PS3LuaRawBootLogNoSync("Lua VM: sol2 state_view construction completed");
 		luaView->set_panic(sol::c_call<decltype(&LuaPanic), &LuaPanic>);
-		PS3LuaRawBootLog("Lua VM: panic handler registered");
+		PS3LuaRawBootLogNoSync("Lua VM: panic handler registered");
+		PS3LuaRawBootLogSync();
 #endif
 	}
 
