@@ -66,17 +66,17 @@ The repository keeps PS3 XMB media in `assets/xmb/`. The generated package place
 
 ## Startup log
 
-The first logger runs from a priority-103 C runtime constructor, before PSL1GHT's priority-104 Newlib syscall registration. It uses direct LV2 `sysLv2FsOpen` and `sysLv2FsWrite` calls, not `fopen()`, stdio streams, or Newlib's syscall callbacks.
+The priority-103 C runtime constructor writes an immediate marker to PSL1GHT's TTY channel, then tries to create a persistent log using direct LV2 filesystem syscalls. Once a file is open, all startup messages are mirrored to both the file and TTY. The code does not depend on Newlib stdio for the early log.
 
 It tries these paths in order:
 
 1. `/dev_hdd0/game/DEVILUT00/USRDIR/devilutionx-ps3.log`
 2. `/dev_hdd0/tmp/devilutionx-ps3.log`
 3. `/dev_hdd0/game/DEVILUT00/devilutionx-ps3.log`
-4. `/dev_usb000/devilutionx-ps3.log`
+4. `/dev_usb000/devilutionx-ps3.log` through `/dev_usb005/devilutionx-ps3.log`
 5. `devilutionx-ps3.log` in the process working directory
 
-If a file opens, earlier LV2 open results are recorded in the selected log along with subsequent SDL/startup messages. If none of the paths can be opened, the code also writes the failed LV2 return codes and paths to PSL1GHT's TTY output, which can be inspected through RPCS3 logs or a PS3 ethdebug listener. No file in any location would then indicate failure before the constructor executes, or that LV2 denied all candidate filesystem paths.
+Connect a USB drive before launching to receive a log at its root when the HDD targets cannot be opened. TTY output can be inspected through RPCS3 logs or a PS3 ethdebug listener. The TTY stream now includes the constructor marker, every subsequent boot/SDL message, and all failed LV2 open return codes. No file plus no TTY marker points to failure before this constructor executes or to the process failing before PS3 TTY output can be captured.
 
 ## Current porting status
 
