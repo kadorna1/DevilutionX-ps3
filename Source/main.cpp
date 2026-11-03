@@ -99,9 +99,7 @@ extern "C" int main(int argc, char **argv)
 {
 #ifdef __PS3__
 	InitializePS3Log();
-	char bootMessage[96];
-	std::snprintf(bootMessage, sizeof(bootMessage), "main() entered; argc=%d", argc);
-	PS3WriteBootLog(bootMessage);
+	PS3WriteBootLog("main() entered");
 #endif
 #ifdef __SWITCH__
 	switch_romfs_init();
