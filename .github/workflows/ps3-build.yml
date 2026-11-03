@@ -116,6 +116,16 @@ jobs:
           file build-ps3/devilutionx | grep -Eiq 'ELF 64-bit MSB.*PowerPC'
           readelf -h build-ps3/devilutionx | tee -a build-ps3/ppu-elf-info.txt
           readelf -h build-ps3/devilutionx | grep -Eiq 'PowerPC64|PowerPC'
+          readelf -SW build-ps3/devilutionx | tee -a build-ps3/ppu-elf-info.txt
+          readelf -SW build-ps3/devilutionx | grep -Fq '.sys_proc_param' || {
+            echo "PS3 process metadata section .sys_proc_param is missing" >&2
+            exit 1
+          }
+          nm build-ps3/devilutionx | grep -q '__sys_process_param' || {
+            echo "PS3 process parameter symbol was discarded by the linker" >&2
+            exit 1
+          }
+          echo "PS3 process metadata verified"
 
       - name: Upload PPU ELF and built-in engine assets
         uses: actions/upload-artifact@v4
