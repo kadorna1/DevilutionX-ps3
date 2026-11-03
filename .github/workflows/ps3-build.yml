@@ -121,11 +121,24 @@ jobs:
             echo "PS3 process metadata section .sys_proc_param is missing" >&2
             exit 1
           }
-          nm build-ps3/devilutionx | grep -q '__sys_process_param' || {
-            echo "PS3 process parameter symbol was discarded by the linker" >&2
-            exit 1
-          }
-          echo "PS3 process metadata verified"
+          objcopy --dump-section .sys_proc_param=build-ps3/sys_proc_param.bin build-ps3/devilutionx
+          python3 - <<'PY'
+          from pathlib import Path
+          import struct
+
+          section = Path("build-ps3/sys_proc_param.bin").read_bytes()
+          if len(section) != 0x20:
+              raise SystemExit(f"unexpected PS3 process metadata size: {len(section)} bytes")
+          actual = struct.unpack(">8I", section)
+          expected = (0x20, 0x13BCC5F6, 0x00009000, 0x00192001,
+                      1001, 0x00100000, 0x00100000, 0)
+          if actual != expected:
+              raise SystemExit(
+                  "invalid PS3 process metadata: "
+                  f"{tuple(hex(value) for value in actual)}"
+              )
+          print("PS3 process metadata verified: priority=1001, stack=1 MiB")
+          PY
 
       - name: Upload PPU ELF and built-in engine assets
         uses: actions/upload-artifact@v4
