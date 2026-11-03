@@ -117,9 +117,9 @@ struct LuaState {
 #ifdef __PS3__
 	LuaAllocatorStats allocatorStats;
 	lua_State *rawState = nullptr;
-	std::optional<sol::state_view> sol;
+	std::optional<sol::state_view> luaView;
 #else
-	sol::state sol;
+	sol::state luaState;
 #endif
 	sol::table commonPackages;
 	ankerl::unordered_dense::segmented_map<std::string, sol::bytecode> compiledScripts;
@@ -144,8 +144,8 @@ struct LuaState {
 			    ", failed request=", allocatorStats.lastFailedRequest));
 			return;
 		}
-		sol.emplace(rawState);
-		sol->set_panic(sol::c_call<decltype(&LuaPanic), &LuaPanic>);
+		luaView.emplace(rawState);
+		luaView->set_panic(sol::c_call<decltype(&LuaPanic), &LuaPanic>);
 		PS3LuaRawBootLog("Lua VM: lua_newstate completed");
 		PS3_LUA_BOOT_LOG(StrCat(
 		    "state allocation complete; calls=", allocatorStats.allocationCalls,
@@ -157,7 +157,7 @@ struct LuaState {
 #ifdef __PS3__
 	~LuaState()
 	{
-		sol.reset();
+		luaView.reset();
 		if (rawState != nullptr)
 			lua_close(rawState);
 	}
@@ -166,9 +166,9 @@ struct LuaState {
 	sol::state_view &view()
 	{
 #ifdef __PS3__
-		return *sol;
+		return *luaView;
 #else
-		return sol;
+		return luaState;
 #endif
 	}
 };
@@ -408,7 +408,7 @@ void LuaInitialize()
 	PS3_LUA_BOOT_LOG("state construction begin");
 	CurrentLuaState.emplace();
 #ifdef __PS3__
-	if (!CurrentLuaState->sol.has_value()) {
+	if (!CurrentLuaState->luaView.has_value()) {
 		PS3_LUA_BOOT_LOG("state construction failed: Lua returned no state");
 		app_fatal("Unable to create the Lua VM (see devilutionx-ps3.log for allocator details)");
 	}
