@@ -29,7 +29,7 @@
 
 #ifdef __PS3__
 #include <sys/file.h>
-#include <sys/tty.h>
+#include <ppu-lv2.h>
 #include <lv2/sysfs.h>
 
 #ifndef DEVILUTIONX_PS3_TITLE_ID
@@ -39,6 +39,12 @@
 namespace {
 
 s32 PS3LogFd = -1;
+
+s32 PS3SysTtyWrite(s32 channel, const void *ptr, u32 length, u32 *written)
+{
+	lv2syscall4(403, channel, (u64)ptr, length, (u64)written);
+	return_to_user_prog(s32);
+}
 
 void PS3RawWriteToFd(s32 fd, const char *text, u64 length)
 {
@@ -59,7 +65,7 @@ void PS3RawWriteToTty(const char *text, u32 length)
 	if (text == nullptr || length == 0)
 		return;
 	u32 written = 0;
-	(void)sysTtyWrite(0, text, length, &written);
+	(void)PS3SysTtyWrite(0, text, length, &written);
 }
 
 void PS3RawWrite(const char *text, u64 length)
