@@ -194,10 +194,12 @@ extern "C" void PS3LuaRawBootLogNoSync(const char *message)
 	PS3WriteBootLog(message);
 }
 
-extern "C" void PS3LuaRawBootLogStatus(int status)
+extern "C" void PS3LuaRawBootLogStatus(int status, int callbackReturned)
 {
 	PS3RawWrite("[PS3][BOOT] Lua protected-call lj.status=");
 	PS3RawWriteNumber(status);
+	PS3RawWrite(" callback_returned=");
+	PS3RawWriteNumber(callbackReturned);
 	PS3RawWrite("\n");
 }
 
