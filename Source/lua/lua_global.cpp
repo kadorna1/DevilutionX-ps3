@@ -162,6 +162,15 @@ struct LuaState {
 			lua_close(rawState);
 	}
 #endif
+
+	sol::state_view &view()
+	{
+#ifdef __PS3__
+		return *sol;
+#else
+		return sol;
+#endif
+	}
 };
 
 std::optional<LuaState> CurrentLuaState;
@@ -203,20 +212,20 @@ sol::object LuaLoadScriptFromAssets(std::string_view packageName)
 
 	auto iter = luaState.compiledScripts.find(path);
 	if (iter != luaState.compiledScripts.end()) {
-		return luaState.sol->load(iter->second.as_string_view(), path, sol::load_mode::binary);
+		return luaState.view().load(iter->second.as_string_view(), path, sol::load_mode::binary);
 	}
 
 	std::expected<AssetData, std::string> assetData = LoadIntegralAsset(path);
 	if (!assetData.has_value()) {
 		PS3_LUA_BOOT_LOG(StrCat("script asset loading failed: ", path, ": ", assetData.error()));
-		sol::stack::push(luaState.sol->lua_state(), assetData.error());
-		return sol::stack_object(luaState.sol->lua_state(), -1);
+		sol::stack::push(luaState.view().lua_state(), assetData.error());
+		return sol::stack_object(luaState.view().lua_state(), -1);
 	}
-	const sol::load_result result = luaState.sol->load(std::string_view(*assetData), path, sol::load_mode::text);
+	const sol::load_result result = luaState.view().load(std::string_view(*assetData), path, sol::load_mode::text);
 	if (!result.valid()) {
-		sol::stack::push(luaState.sol->lua_state(),
+		sol::stack::push(luaState.view().lua_state(),
 		    StrCat("Lua error when loading ", path, ": ", result.get<std::string>()));
-		return sol::stack_object(luaState.sol->lua_state(), -1);
+		return sol::stack_object(luaState.view().lua_state(), -1);
 	}
 	const sol::function fn = result;
 	PS3_LUA_BOOT_LOG(StrCat("script bytecode compilation begin: ", path));
@@ -281,7 +290,7 @@ void Sol2DebugPrintSection(const std::string &message, lua_State *state)
 
 sol::environment CreateLuaSandbox()
 {
-	sol::state_view &lua = *CurrentLuaState->sol;
+	sol::state_view &lua = CurrentLuaState->view();
 	sol::environment sandbox(lua, sol::create);
 
 	// Registering globals
@@ -405,7 +414,7 @@ void LuaInitialize()
 	}
 #endif
 	PS3_LUA_BOOT_LOG("state construction complete");
-	sol::state_view &lua = *CurrentLuaState->sol;
+	sol::state_view &lua = CurrentLuaState->view();
 	lua_setwarnf(lua.lua_state(), LuaWarn, /*ud=*/nullptr);
 	PS3_LUA_BOOT_LOG("opening standard libraries begin");
 	lua.open_libraries(
@@ -506,7 +515,7 @@ sol::table *GetLuaEvents()
 
 sol::state_view &GetLuaState()
 {
-	return CurrentLuaState->sol;
+	return CurrentLuaState->view();
 }
 
 sol::object SafeCallResult(sol::protected_function_result result, bool optional)
