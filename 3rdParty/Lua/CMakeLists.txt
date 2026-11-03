@@ -257,6 +257,25 @@ extern void PS3LuaRawBootLogStatus(int status, int callbackReturned);
       _ps3_lua_do_content "${_ps3_lua_do_content}")
   endif()
 
+  # Snapshot status at each boundary after the callback has completed.
+  if(NOT _ps3_lua_do_content MATCHES "PS3 Lua status checkpoint after LUAI_TRY")
+    string(REPLACE
+      [=[  PS3_LUA_CORE_TRACE("Lua core: LUAI_TRY completed");]=]
+      [=[  PS3_LUA_CORE_TRACE_STATUS(lj.status, -3); /* PS3 Lua status checkpoint after LUAI_TRY */
+  PS3_LUA_CORE_TRACE("Lua core: LUAI_TRY completed");]=]
+      _ps3_lua_do_content "${_ps3_lua_do_content}")
+    string(REPLACE
+      [=[  PS3_LUA_CORE_TRACE("Lua core: error handler restored");]=]
+      [=[  PS3_LUA_CORE_TRACE_STATUS(lj.status, -4); /* PS3 Lua status checkpoint after handler restore */
+  PS3_LUA_CORE_TRACE("Lua core: error handler restored");]=]
+      _ps3_lua_do_content "${_ps3_lua_do_content}")
+    string(REPLACE
+      [=[  PS3_LUA_CORE_TRACE("Lua core: C-call depth restored");]=]
+      [=[  PS3_LUA_CORE_TRACE_STATUS(lj.status, -5); /* PS3 Lua status checkpoint after C-call restore */
+  PS3_LUA_CORE_TRACE("Lua core: C-call depth restored");]=]
+      _ps3_lua_do_content "${_ps3_lua_do_content}")
+  endif()
+
   # Record the initialized status before entering the protected callback.
   if(NOT _ps3_lua_do_content MATCHES "PS3_LUA_CORE_TRACE_STATUS\\(lj.status, -2\\)")
     string(REPLACE
