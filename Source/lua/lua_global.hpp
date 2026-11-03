@@ -4,7 +4,7 @@
 #include <string_view>
 
 #include <function_ref.hpp>
-#include <sol/forward.hpp>
+#include <sol/state_view.hpp>
 
 namespace devilution {
 
@@ -12,7 +12,7 @@ void LuaInitialize();
 void LuaReloadActiveMods();
 void LuaShutdown();
 
-sol::state &GetLuaState();
+sol::state_view &GetLuaState();
 sol::environment CreateLuaSandbox();
 sol::object SafeCallResult(sol::protected_function_result result, bool optional);
 sol::table *GetLuaEvents();
