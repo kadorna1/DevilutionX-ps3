@@ -177,8 +177,6 @@ void InitializePS3Log()
 		(void)PS3SysLv2FsFsync(PS3LogFd);
 		return;
 	}
-
-
 }
 
 // Priority 103 runs before PSL1GHT's priority-104 Newlib registration.
