@@ -66,11 +66,15 @@ The repository keeps PS3 XMB media in `assets/xmb/`. The generated package place
 
 ## Startup log
 
-Every PS3 launch recreates a plain-text startup log at:
+The logger starts from a priority-101 C runtime constructor, before `main()`, and tries these locations in order:
 
-`/dev_hdd0/game/DEVILUT00/USRDIR/devilutionx-ps3.log`
+1. `/dev_hdd0/game/DEVILUT00/USRDIR/devilutionx-ps3.log`
+2. `/dev_hdd0/tmp/devilutionx-ps3.log`
+3. `/dev_hdd0/game/DEVILUT00/devilutionx-ps3.log`
+4. `/dev_usb000/devilutionx-ps3.log`
+5. `devilutionx-ps3.log` in the process working directory
 
-The log captures early process output, SDL messages, and markers around the main startup stages. Messages are flushed as they are written so the file remains useful when the title exits or crashes. Retrieve it from the PS3 HDD with an FTP client or a homebrew file manager. The last `PS3 boot:` entry identifies the last startup stage reached. If the file is not created at all, the executable likely did not reach `main()` (or the title directory could not be opened for writing).
+The log records failed path attempts with their Newlib `errno`, captures SDL messages and startup-stage markers, and flushes each message. Retrieve the file with FTP or a homebrew file manager. The first successful path is written to the log. If no file appears in any of these locations, the executable is failing before the early constructor runs, or every candidate filesystem location is unavailable for writing.
 
 ## Current porting status
 

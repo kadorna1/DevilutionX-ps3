@@ -28,6 +28,7 @@
 #include "diablo.h"
 
 #ifdef __PS3__
+#include <cerrno>
 #include <cstdio>
 
 #ifndef DEVILUTIONX_PS3_TITLE_ID
@@ -37,6 +38,7 @@
 namespace {
 
 FILE *PS3LogFile = nullptr;
+const char *PS3LogPath = nullptr;
 
 void PS3WriteBootLog(const char *message)
 {
@@ -54,38 +56,53 @@ void PS3LogOutput(void *, int category, SDL_LogPriority priority, const char *me
 
 void InitializePS3Log()
 {
-	// Open the persistent log before SDL/game initialization, so early failures and
-	// runtime diagnostics survive a launch that returns directly to XMB.
+	if (PS3LogFile != nullptr)
+		return;
+
+	// Try the installed title directory first, then independent HDD/USB locations.
+	// Some CFW/HEN setups allow reading USRDIR but deny creating files there.
+	static const char *const candidates[] = {
+	    "/dev_hdd0/game/" DEVILUTIONX_PS3_TITLE_ID "/USRDIR/devilutionx-ps3.log",
+	    "/dev_hdd0/tmp/devilutionx-ps3.log",
+	    "/dev_hdd0/game/" DEVILUTIONX_PS3_TITLE_ID "/devilutionx-ps3.log",
+	    "/dev_usb000/devilutionx-ps3.log",
+	    "devilutionx-ps3.log",
+	};
+
 	std::fflush(stdout);
 	std::fflush(stderr);
 
-	const char *logPath = "/dev_hdd0/game/" DEVILUTIONX_PS3_TITLE_ID "/USRDIR/devilutionx-ps3.log";
-	PS3LogFile = std::fopen(logPath, "w");
-	if (PS3LogFile == nullptr) {
-		logPath = "devilutionx-ps3.log";
-		PS3LogFile = std::fopen(logPath, "w");
-	}
-	if (PS3LogFile == nullptr) {
-		std::fprintf(stderr, "[PS3][BOOT] Could not open startup log in USRDIR or current directory.\n");
-		std::fflush(stderr);
+	for (const char *candidate : candidates) {
+		errno = 0;
+		FILE *file = std::fopen(candidate, "w");
+		if (file == nullptr) {
+			const int openError = errno;
+			std::fprintf(stderr, "[PS3][BOOT] fopen failed: %s (errno=%d)\n", candidate, openError);
+			std::fflush(stderr);
+			continue;
+		}
+
+		PS3LogFile = file;
+		PS3LogPath = candidate;
+		std::setvbuf(PS3LogFile, nullptr, _IONBF, 0);
+		PS3WriteBootLog("persistent log opened");
+		PS3WriteBootLog(PS3LogPath);
 		return;
 	}
 
-	// freopen is provided by Newlib; dup2 is not available in the PS3 SDK.
-	std::setvbuf(PS3LogFile, nullptr, _IONBF, 0);
-	if (std::freopen(logPath, "a", stdout) == nullptr)
-		PS3WriteBootLog("warning: could not redirect stdout");
-	else
-		std::setvbuf(stdout, nullptr, _IONBF, 0);
-	if (std::freopen(logPath, "a", stderr) == nullptr)
-		PS3WriteBootLog("warning: could not redirect stderr");
-	else
-		std::setvbuf(stderr, nullptr, _IONBF, 0);
+	std::fprintf(stderr, "[PS3][BOOT] FATAL: unable to create a log in any candidate location.\n");
+	std::fflush(stderr);
+}
 
-	SDL_LogSetOutputFunction(PS3LogOutput, nullptr);
-	SDL_LogSetAllPriority(SDL_LOG_PRIORITY_VERBOSE);
-	PS3WriteBootLog(logPath);
-}} // namespace
+// Run before main(), so the log still exists if application initialization fails
+// before the normal entry point can install the SDL log callback.
+__attribute__((constructor(101))) void PS3EarlyLogConstructor()
+{
+	InitializePS3Log();
+	PS3WriteBootLog("pre-main constructor reached");
+}
+
+} // namespace
 #endif
 
 #if !defined(__APPLE__)
@@ -99,6 +116,8 @@ extern "C" int main(int argc, char **argv)
 {
 #ifdef __PS3__
 	InitializePS3Log();
+	SDL_LogSetOutputFunction(PS3LogOutput, nullptr);
+	SDL_LogSetAllPriority(SDL_LOG_PRIORITY_VERBOSE);
 	PS3WriteBootLog("main() entered");
 #endif
 #ifdef __SWITCH__
