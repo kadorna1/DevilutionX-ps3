@@ -121,3 +121,15 @@ jobs:
             build-ps3/ppu-elf-info.txt
             build-ps3/ccache-stats.txt
           if-no-files-found: error
+      
+      - name: Create PS3 SELF and PKG
+        run: |
+          set -euo pipefail
+          bash Packaging/ps3/make_pkg.sh build-ps3
+
+      - name: Upload PS3 PKG
+        uses: actions/upload-artifact@v4
+        with:
+          name: devilutionx-ps3-pkg
+          path: build-ps3/devilutionx-ps3*.pkg
+          if-no-files-found: error
