@@ -68,7 +68,7 @@ The repository keeps PS3 XMB media in `assets/xmb/`. The generated package place
 
 The PS3 executable declares its process priority and 1 MiB main-thread stack with PSL1GHT's `SYS_PROCESS_PARAM` metadata. The linker explicitly retains `__sys_process_param` so the Release build's section garbage collection cannot discard the loader record.
 
-The priority-103 C runtime constructor creates a persistent log using direct LV2 filesystem syscalls, before Newlib file I/O is initialized. Diagnostics are written only to the console's local HDD or mounted USB storage; no TTY or network logging is used.
+The priority-103 C runtime constructor creates a persistent log using direct LV2 filesystem syscalls, before Newlib file I/O is initialized. Diagnostics are written exclusively to the console's local HDD or mounted USB storage.
 
 It tries these paths in order:
 
