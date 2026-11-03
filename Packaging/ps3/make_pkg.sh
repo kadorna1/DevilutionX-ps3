@@ -9,6 +9,14 @@ export PS3DEV PSL1GHT
 export PATH="$PS3DEV/bin:$PS3DEV/host/bin:$PS3DEV/ppu/bin:$PS3DEV/spu/bin:$PS3DEV/portlibs/ppu/bin:$PATH"
 
 APPID="DEVILUT00"
+if [[ -f "$BUILD_DIR/CMakeCache.txt" ]]; then
+  CACHE_APPID="$(sed -n 's/^DEVILUTIONX_PS3_TITLE_ID:STRING=//p' "$BUILD_DIR/CMakeCache.txt" | head -n 1)"
+  APPID="${CACHE_APPID:-$APPID}"
+fi
+[[ ${#APPID} -eq 9 && "$APPID" =~ ^[A-Z0-9]+$ ]] || {
+  echo "error: invalid PS3 TITLE_ID: $APPID" >&2
+  exit 1
+}
 TITLE="DevilutionX"
 CONTENT_ID="UP0001-${APPID}_00-0000000000000000"
 ELF="$BUILD_DIR/devilutionx"
@@ -42,8 +50,20 @@ find_tool() {
 STRIP="$(find_tool ppu-strip)" || die "ppu-strip not found"
 SPRX="$(find_tool sprxlinker)" || die "sprxlinker not found"
 SELF="$(find_tool make_self_npdrm)" || die "make_self_npdrm not found"
-SFO="$(find_tool sfo.py sfo)" || die "sfo.py / sfo not found"
-PKG="$(find_tool pkg.py pkg)" || die "pkg.py / pkg not found"
+# Prefer the bundled Python helpers, but retry alternatives if their
+# runtime/dependencies are unavailable in the builder image.
+SFO_CANDIDATES=()
+for candidate in sfo.py sfo; do
+  path="$(find_tool "$candidate" || true)"
+  [[ -n "$path" ]] && SFO_CANDIDATES+=("$path")
+done
+PKG_CANDIDATES=()
+for candidate in pkg.py pkg; do
+  path="$(find_tool "$candidate" || true)"
+  [[ -n "$path" ]] && PKG_CANDIDATES+=("$path")
+done
+[[ ${#SFO_CANDIDATES[@]} -gt 0 ]] || die "sfo.py / sfo not found"
+[[ ${#PKG_CANDIDATES[@]} -gt 0 ]] || die "pkg.py / pkg not found"
 
 OUT_DIR="$BUILD_DIR"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/devilutionx-ps3-pkg.XXXXXX")"
@@ -73,27 +93,41 @@ if [[ -s "$PS3DEV/bin/ICON0.PNG" ]]; then
 fi
 
 echo "Creating PARAM.SFO..."
-if ! "$SFO" --title "$TITLE" --appid "$APPID" -f "$SFO_XML" "$PKGDIR/PARAM.SFO"; then
-  if [[ "$SFO" == *sfo.py ]] && command -v python3 >/dev/null 2>&1; then
-    python3 "$SFO" --title "$TITLE" --appid "$APPID" -f "$SFO_XML" "$PKGDIR/PARAM.SFO" ||
-      die "SFO generation failed"
-  else
-    die "SFO generation failed"
+sfo_ok=0
+for candidate in "${SFO_CANDIDATES[@]}"; do
+  if "$candidate" --title "$TITLE" --appid "$APPID" -f "$SFO_XML" "$PKGDIR/PARAM.SFO" && [[ -s "$PKGDIR/PARAM.SFO" ]]; then
+    sfo_ok=1
+    break
   fi
-fi
-[[ -s "$PKGDIR/PARAM.SFO" ]] || die "PARAM.SFO was not created"
+  if [[ "$candidate" == *.py ]]; then
+    for python in python2 python3; do
+      if command -v "$python" >/dev/null 2>&1 && "$python" "$candidate" --title "$TITLE" --appid "$APPID" -f "$SFO_XML" "$PKGDIR/PARAM.SFO" && [[ -s "$PKGDIR/PARAM.SFO" ]]; then
+        sfo_ok=1
+        break 2
+      fi
+    done
+  fi
+done
+[[ "$sfo_ok" -eq 1 ]] || die "no SFO tool could create PARAM.SFO"
 
 OUT_PKG="$OUT_DIR/devilutionx-ps3.pkg"
 echo "Creating $OUT_PKG..."
-if ! "$PKG" --contentid "$CONTENT_ID" "$PKGDIR/" "$OUT_PKG"; then
-  if [[ "$PKG" == *pkg.py ]] && command -v python3 >/dev/null 2>&1; then
-    python3 "$PKG" --contentid "$CONTENT_ID" "$PKGDIR/" "$OUT_PKG" ||
-      die "PKG generation failed"
-  else
-    die "PKG generation failed"
+pkg_ok=0
+for candidate in "${PKG_CANDIDATES[@]}"; do
+  if "$candidate" --contentid "$CONTENT_ID" "$PKGDIR/" "$OUT_PKG" && [[ -s "$OUT_PKG" ]]; then
+    pkg_ok=1
+    break
   fi
-fi
-[[ -s "$OUT_PKG" ]] || die "PKG tool did not create $OUT_PKG"
+  if [[ "$candidate" == *.py ]]; then
+    for python in python2 python3; do
+      if command -v "$python" >/dev/null 2>&1 && "$python" "$candidate" --contentid "$CONTENT_ID" "$PKGDIR/" "$OUT_PKG" && [[ -s "$OUT_PKG" ]]; then
+        pkg_ok=1
+        break 2
+      fi
+    done
+  fi
+done
+[[ "$pkg_ok" -eq 1 ]] || die "no PKG tool could create $OUT_PKG"
 
 FINALIZER="$(find_tool package_finalize || true)"
 if [[ -n "$FINALIZER" ]]; then
