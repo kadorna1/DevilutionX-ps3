@@ -73,6 +73,7 @@ jobs:
             devilutionx-ps3-ccache-${{ runner.os }}-
 
       - name: Restore CMake/Ninja build tree
+        id: ps3-build-cache
         uses: actions/cache@v4
         with:
           path: build-ps3
@@ -93,6 +94,11 @@ jobs:
       - name: Configure and compile
         run: |
           set -euo pipefail
+          if [[ "${{ steps.ps3-build-cache.outputs.cache-hit }}" == "true" ]]; then
+            echo "Reusing the cached CMake/Ninja build tree and already-built PPU dependencies."
+          else
+            echo "No reusable PS3 build tree was found; this run will build dependencies and the game once."
+          fi
           bash Packaging/ps3/build.sh --build-only build-ps3
 
       - name: Record source hashes and compiler statistics
@@ -127,9 +133,29 @@ jobs:
           set -euo pipefail
           bash Packaging/ps3/make_pkg.sh build-ps3
 
-      - name: Upload PS3 PKG
+      - name: Verify finalized GNPDRM PKG
+        run: |
+          set -euo pipefail
+          PKG="build-ps3/devilutionx-ps3-gnpdrm.pkg"
+          test -s "$PKG"
+          python3 - "$PKG" <<'PY'
+          from pathlib import Path
+          import struct
+          import sys
+
+          path = Path(sys.argv[1])
+          header = path.read_bytes()[:0x80]
+          if len(header) < 0x80 or header[:4] != b"\\x7fPKG":
+              raise SystemExit("finalized package has an invalid PKG header")
+          revision = struct.unpack(">H", header[4:6])[0]
+          if revision != 0x8000:
+              raise SystemExit(f"expected GNPDRM PKG revision 0x8000, got 0x{revision:04x}")
+          print(f"Finalized GNPDRM package verified: {path} ({path.stat().st_size} bytes)")
+          PY
+
+      - name: Upload finalized GNPDRM PS3 PKG
         uses: actions/upload-artifact@v4
         with:
-          name: devilutionx-ps3-pkg
-          path: build-ps3/devilutionx-ps3*.pkg
+          name: devilutionx-ps3-gnpdrm-pkg
+          path: build-ps3/devilutionx-ps3-gnpdrm.pkg
           if-no-files-found: error
