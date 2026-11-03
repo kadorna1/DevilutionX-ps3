@@ -75,7 +75,13 @@ const std::string &NxdkGetPrefPath()
 std::string GetSdlBasePath()
 {
 	std::string result;
-#if defined(__DJGPP__)
+#if defined(__PS3__)
+#ifndef DEVILUTIONX_PS3_TITLE_ID
+#define DEVILUTIONX_PS3_TITLE_ID "DEVILUT00"
+#endif
+	// The PS3 title USRDIR is writable and persists between launches.
+	result = "/dev_hdd0/game/" DEVILUTIONX_PS3_TITLE_ID "/USRDIR/";
+#elif defined(__DJGPP__)
 	// In DOS, use an empty base path.
 #elif defined(USE_SDL3)
 	const char *s = SDL_GetBasePath();
@@ -104,7 +110,9 @@ const std::string &BasePath()
 const std::string &PrefPath()
 {
 	if (!prefPath) {
-#if defined(__DJGPP__)
+#if defined(__PS3__)
+		prefPath = GetSdlBasePath();
+#elif defined(__DJGPP__)
 		prefPath = std::string();
 #elif defined(__IPHONEOS__)
 		prefPath = FromSDL(IOSGetPrefPath());
@@ -125,7 +133,9 @@ const std::string &PrefPath()
 const std::string &ConfigPath()
 {
 	if (!configPath) {
-#if defined(__DJGPP__)
+#if defined(__PS3__)
+		configPath = GetSdlBasePath();
+#elif defined(__DJGPP__)
 		configPath = std::string();
 #elif defined(__IPHONEOS__)
 		configPath = FromSDL(IOSGetPrefPath());
