@@ -4,6 +4,14 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "PS3" AND NOT PS3)
 endif()
 
 set(PS3 TRUE CACHE BOOL "Building for PlayStation 3" FORCE)
+
+# The PS3 toolchain sysroot does not automatically add PSL1GHT's PPU headers.
+# Startup diagnostics use raw LV2 syscall wrappers from ppu-lv2.h.
+set(_psl1ght_ppu_include "${PSL1GHT}/ppu/include")
+if(NOT EXISTS "${_psl1ght_ppu_include}/ppu-lv2.h")
+  message(FATAL_ERROR "PSL1GHT PPU headers not found: ${_psl1ght_ppu_include}")
+endif()
+include_directories("${_psl1ght_ppu_include}")
 # The PS3 runtime does not support loading ordinary shared libraries. Make
 # dependency selection default to static archives for this target.
 set_property(GLOBAL PROPERTY TARGET_SUPPORTS_SHARED_LIBS FALSE)

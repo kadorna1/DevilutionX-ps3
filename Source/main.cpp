@@ -28,7 +28,6 @@
 #include "diablo.h"
 
 #ifdef __PS3__
-#include <sys/file.h>
 #include <ppu-lv2.h>
 #include <lv2/sysfs.h>
 
@@ -39,6 +38,24 @@
 namespace {
 
 s32 PS3LogFd = -1;
+
+s32 PS3SysLv2FsOpen(const char *path, s32 flags, s32 *fd, u32 mode)
+{
+	lv2syscall6(801, (u64)path, flags, (u64)fd, mode, 0, 0);
+	return_to_user_prog(s32);
+}
+
+s32 PS3SysLv2FsWrite(s32 fd, const void *buffer, u64 length, u64 *written)
+{
+	lv2syscall4(803, fd, (u64)buffer, length, (u64)written);
+	return_to_user_prog(s32);
+}
+
+s32 PS3SysLv2FsFsync(s32 fd)
+{
+	lv2syscall1(820, fd);
+	return_to_user_prog(s32);
+}
 
 s32 PS3SysTtyWrite(s32 channel, const void *ptr, u32 length, u32 *written)
 {
@@ -52,7 +69,7 @@ void PS3RawWriteToFd(s32 fd, const char *text, u64 length)
 		return;
 	while (length > 0) {
 		u64 written = 0;
-		const s32 result = sysLv2FsWrite(fd, text, length, &written);
+		const s32 result = PS3SysLv2FsWrite(fd, text, length, &written);
 		if (result != 0 || written == 0)
 			return;
 		text += written;
@@ -121,7 +138,7 @@ void PS3LogOutput(void *, int category, SDL_LogPriority priority, const char *me
 	PS3RawWrite(message != nullptr ? message : "");
 	PS3RawWrite("\n");
 	if (PS3LogFd >= 0)
-		(void)sysLv2FsFsync(PS3LogFd);
+		(void)PS3SysLv2FsFsync(PS3LogFd);
 
 }
 
@@ -142,7 +159,7 @@ void InitializePS3Log()
 
 	for (unsigned int index = 0; index < sizeof(candidates) / sizeof(candidates[0]); ++index) {
 		s32 fd = -1;
-		const s32 result = sysLv2FsOpen(candidates[index], SYS_O_WRONLY | SYS_O_CREAT | SYS_O_TRUNC, &fd, 0666, nullptr, 0);
+		const s32 result = PS3SysLv2FsOpen(candidates[index], SYS_O_WRONLY | SYS_O_CREAT | SYS_O_TRUNC, &fd, 0666, nullptr, 0);
 		if (result != 0) {
 			openResults[index] = result;
 			continue;
@@ -161,7 +178,7 @@ void InitializePS3Log()
 		PS3RawWrite(candidates[index]);
 		PS3RawWrite("\n");
 		PS3WriteBootLog("pre-main constructor reached");
-		(void)sysLv2FsFsync(PS3LogFd);
+		(void)PS3SysLv2FsFsync(PS3LogFd);
 		return;
 	}
 
