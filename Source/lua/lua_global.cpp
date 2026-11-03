@@ -128,7 +128,7 @@ struct LuaState {
 
 	LuaState()
 #ifndef __PS3__
-	    : sol(sol::c_call<decltype(&LuaPanic), &LuaPanic>)
+	    : luaState(sol::c_call<decltype(&LuaPanic), &LuaPanic>)
 #endif
 	{
 #ifdef __PS3__
