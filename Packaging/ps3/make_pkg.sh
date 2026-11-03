@@ -95,6 +95,7 @@ fi
 echo "Creating PARAM.SFO..."
 sfo_ok=0
 for candidate in "${SFO_CANDIDATES[@]}"; do
+  rm -f "$PKGDIR/PARAM.SFO"
   if "$candidate" --title "$TITLE" --appid "$APPID" -f "$SFO_XML" "$PKGDIR/PARAM.SFO" && [[ -s "$PKGDIR/PARAM.SFO" ]]; then
     sfo_ok=1
     break
@@ -114,6 +115,7 @@ OUT_PKG="$OUT_DIR/devilutionx-ps3.pkg"
 echo "Creating $OUT_PKG..."
 pkg_ok=0
 for candidate in "${PKG_CANDIDATES[@]}"; do
+  rm -f "$OUT_PKG"
   if "$candidate" --contentid "$CONTENT_ID" "$PKGDIR/" "$OUT_PKG" && [[ -s "$OUT_PKG" ]]; then
     pkg_ok=1
     break
@@ -129,6 +131,7 @@ for candidate in "${PKG_CANDIDATES[@]}"; do
 done
 [[ "$pkg_ok" -eq 1 ]] || die "no PKG tool could create $OUT_PKG"
 
+OUT_FINAL=""
 FINALIZER="$(find_tool package_finalize || true)"
 if [[ -n "$FINALIZER" ]]; then
   OUT_FINAL="$OUT_DIR/devilutionx-ps3-gnpdrm.pkg"
