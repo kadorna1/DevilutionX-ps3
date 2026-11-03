@@ -20,6 +20,9 @@ jobs:
   build-ps3:
     name: Build DevilutionX for PS3
     runs-on: ubuntu-24.04
+    defaults:
+      run:
+        shell: bash
     container:
       image: hldtux/ps3dev-sdl2:latest
     timeout-minutes: 90
