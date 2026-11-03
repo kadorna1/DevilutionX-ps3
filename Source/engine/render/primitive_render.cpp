@@ -181,7 +181,12 @@ void DrawHalfTransparentRectTo(const Surface &out, int sx, int sy, int width, in
 		height = out.h() - sy;
 	}
 
+#if DEVILUTIONX_PALETTE_TRANSPARENCY_BLACK_16_LUT
 	DrawHalfTransparentBlendedRectTo(out, sx, sy, width, height);
+#else
+	// The non-LUT implementation takes the palette index explicitly.
+	DrawHalfTransparentBlendedRectTo(out, sx, sy, width, height, 0);
+#endif
 }
 
 void DrawHalfTransparentRectTo(const Surface &out, int sx, int sy, int width, int height, uint8_t color)
