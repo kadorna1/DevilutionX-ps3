@@ -31,6 +31,7 @@ SDL2_JOYSTICK_BLOB="f7b2d2a8239c2052653f95ce155e656e9bdc431e"
 SDL2_SOURCE="$BUILD_DIR/_deps/sdl2-psl1ght"
 PATCH_FILE="$ROOT/Packaging/ps3/patches/sdl2-psl1ght-ppu-flip-wait.patch"
 TEXTURE_FREE_PATCH_FILE="$ROOT/Packaging/ps3/patches/sdl2-psl1ght-texture-free-flip-wait.patch"
+TEXTURE_CREATE_PATCH_FILE="$ROOT/Packaging/ps3/patches/sdl2-psl1ght-texture-create-safety.patch"
 JOYSTICK_PATCH_FILE="$ROOT/Packaging/ps3/patches/sdl2-psl1ght-controller-input.patch"
 
 mkdir -p "$(dirname "$SDL2_SOURCE")"
@@ -71,6 +72,15 @@ if grep -Fq "TODO: Wait for the DMA transfer to complete" "$SDL2_SOURCE/$SDL2_RE
   exit 1
 fi
 
+# Guard and trace each RSX texture allocation so allocation failure is not
+# dereferenced by the SDL renderer. This applies independently to restored caches.
+if ! grep -Fq "PSL1GHT texture create begin" "$SDL2_SOURCE/$SDL2_RENDERER"; then
+  git -C "$SDL2_SOURCE" apply --check "$TEXTURE_CREATE_PATCH_FILE"
+  git -C "$SDL2_SOURCE" apply "$TEXTURE_CREATE_PATCH_FILE"
+fi
+grep -Fq "PSL1GHT texture create begin" "$SDL2_SOURCE/$SDL2_RENDERER"
+grep -Fq "PSL1GHT texture allocation failed" "$SDL2_SOURCE/$SDL2_RENDERER"
+
 actual_joystick_blob="$(git -C "$SDL2_SOURCE" rev-parse "HEAD:$SDL2_JOYSTICK")"
 if [[ "$actual_joystick_blob" != "$SDL2_JOYSTICK_BLOB" ]]; then
   echo "error: SDL2 PSL1GHT joystick source changed unexpectedly" >&2
@@ -109,7 +119,7 @@ test -s "$SDL2_ARCHIVE" || {
   echo "SDL2 source: $SDL2_REPO ($SDL2_BRANCH)"
   echo "SDL2 source commit: $(git -C "$SDL2_SOURCE" rev-parse HEAD)"
   echo "SDL2 renderer source blob: $actual_blob"
-  echo "Renderer patches: PPU-side flip polling and wait-before-free for RSX texture memory"
+  echo "Renderer patches: PPU-side flip polling, wait-before-free, and guarded RSX texture allocation"
   echo "PS3 joystick source blob: $actual_joystick_blob"
   echo "Controller patch: initialize pad state and center the four analog axes"
   echo "Controller mapping: DualShock 3 4-axis / 16-button ioPad layout"
