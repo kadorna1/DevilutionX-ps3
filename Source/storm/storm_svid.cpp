@@ -222,6 +222,13 @@ void UpdatePalette()
 
 bool BlitFrame()
 {
+#ifdef __PS3__
+	// Write palette-expanded pixels straight into the streaming RSX texture.
+	// This avoids an indexed SDL surface blit followed by a second full-frame
+	// software-surface-to-texture copy in RenderPresent().
+	if (RenderIndexedVideoFrame(SVidFrameBuffer.get(), static_cast<int>(SVidWidth), static_cast<int>(SVidHeight), SVidPalette->colors))
+		return true;
+#endif
 #ifndef USE_SDL1
 	if (renderer != nullptr) {
 		if (
@@ -345,7 +352,13 @@ void SVidInitAudioStream(const SmackerAudioInfo &audioInfo)
 
 bool SVidPlayBegin(const char *filename, int flags)
 {
+#ifdef __PS3__
+	LogInfo("PS3 FMV: opening movie {}", filename);
+#endif
 	if ((flags & 0x10000) != 0 || (flags & 0x20000000) != 0) {
+#ifdef __PS3__
+		LogInfo("PS3 FMV: movie disabled by flags");
+#endif
 		return false;
 	}
 
@@ -362,8 +375,14 @@ bool SVidPlayBegin(const char *filename, int flags)
 	auto *videoStream = OpenAssetAsSdlRwOps(filename);
 	SVidHandle = Smacker_Open(videoStream);
 	if (!SVidHandle.isValid) {
+#ifdef __PS3__
+		LogError("PS3 FMV: Smacker_Open failed for {}", filename);
+#endif
 		return false;
 	}
+#ifdef __PS3__
+	LogInfo("PS3 FMV: Smacker decoder opened {}", filename);
+#endif
 
 #ifndef NOSOUND
 	const bool enableAudio = (flags & 0x1000000) == 0;
@@ -376,6 +395,9 @@ bool SVidPlayBegin(const char *filename, int flags)
 
 		SVidAudioDepth = audioInfo.bitsPerSample;
 		SVidAudioBuffer = std::unique_ptr<int16_t[]> { new int16_t[audioInfo.idealBufferSize / 2] };
+#ifdef __PS3__
+		LogInfo("PS3 FMV: allocated audio buffer {} bytes", audioInfo.idealBufferSize);
+#endif
 
 #ifndef USE_SDL3
 		auto decoder = std::make_unique<PushAulibDecoder>(audioInfo.nChannels, audioInfo.sampleRate);
@@ -386,6 +408,10 @@ bool SVidPlayBegin(const char *filename, int flags)
 
 #ifdef USE_SDL3
 		SVidInitAudioStream(audioInfo);
+#ifdef __PS3__
+		LogInfo("PS3 FMV: SDL audio stream setup {}",
+		    SVidAudioStream != nullptr ? "succeeded" : "unavailable");
+#endif
 #else
 		if (!diablo_is_focused())
 			SVidMute();
@@ -393,11 +419,14 @@ bool SVidPlayBegin(const char *filename, int flags)
 			LogError(LogCategory::Audio, "Aulib::Stream::open (from SVidPlayBegin): {}", SDL_GetError());
 			SVidAudioStream = std::nullopt;
 			SVidAudioDecoder = nullptr;
-		}
-		if (!SVidAudioStream->play()) {
+		} else if (!SVidAudioStream->play()) {
 			LogError(LogCategory::Audio, "Aulib::Stream::play (from SVidPlayBegin): {}", SDL_GetError());
 			SVidAudioStream = std::nullopt;
 			SVidAudioDecoder = nullptr;
+		} else {
+#ifdef __PS3__
+			LogInfo("PS3 FMV: audio stream opened and playing");
+#endif
 		}
 #endif
 	}
@@ -408,12 +437,20 @@ bool SVidPlayBegin(const char *filename, int flags)
 	// to FPS, which is always an integer, and here we convert it back to SMK time units.
 	SVidFrameLength = 100000 / static_cast<uint32_t>(Smacker_GetFrameRate(SVidHandle));
 	Smacker_GetFrameSize(SVidHandle, SVidWidth, SVidHeight);
+#ifdef __PS3__
+	LogInfo("PS3 FMV: {}x{} {} fps, {} frames",
+	    SVidWidth, SVidHeight, Smacker_GetFrameRate(SVidHandle), Smacker_GetNumFrames(SVidHandle));
+#endif
 
 #ifndef USE_SDL1
 	if (renderer != nullptr) {
 		const int renderWidth = static_cast<int>(SVidWidth);
 		const int renderHeight = static_cast<int>(SVidHeight);
 		texture = SDLWrap::CreateTexture(renderer, DEVILUTIONX_DISPLAY_TEXTURE_FORMAT, SDL_TEXTUREACCESS_STREAMING, renderWidth, renderHeight);
+#ifdef __PS3__
+		LogInfo("PS3 FMV: streaming texture {}x{} {}",
+		    renderWidth, renderHeight, texture != nullptr ? "created" : "creation failed");
+#endif
 		if (
 #ifdef USE_SDL3
 		    !SDL_SetRenderLogicalPresentation(renderer, renderWidth, renderHeight,
@@ -447,10 +484,17 @@ bool SVidPlayBegin(const char *filename, int flags)
 
 	// The buffer for the frame. It is not the same as the SDL surface because the SDL surface also has pitch padding.
 	SVidFrameBuffer = std::unique_ptr<uint8_t[]> { new uint8_t[static_cast<size_t>(SVidWidth * SVidHeight)] };
+#ifdef __PS3__
+	LogInfo("PS3 FMV: indexed frame buffer allocated ({} bytes)",
+	    static_cast<size_t>(SVidWidth) * static_cast<size_t>(SVidHeight));
+#endif
 
 	// Decode first frame.
 	Smacker_GetNextFrame(SVidHandle);
 	Smacker_GetFrame(SVidHandle, SVidFrameBuffer.get());
+#ifdef __PS3__
+	LogInfo("PS3 FMV: first frame decoded");
+#endif
 
 	// Create the surface from the frame buffer data.
 	// It will be rendered in `SVidPlayContinue`, called immediately after this function.
@@ -467,6 +511,9 @@ bool SVidPlayBegin(const char *filename, int flags)
 	UpdatePalette();
 
 	SVidFrameEnd = GetTicksSmk() + SVidFrameLength;
+#ifdef __PS3__
+	LogInfo("PS3 FMV: playback setup complete");
+#endif
 
 	return true;
 }
@@ -535,8 +582,8 @@ void SVidPlayEnd()
 		SVidAudioStream = std::nullopt;
 		SVidAudioDecoder = nullptr;
 #endif
-		SVidAudioBuffer = nullptr;
 	}
+	SVidAudioBuffer = nullptr;
 #endif
 
 	if (SVidHandle.isValid)
