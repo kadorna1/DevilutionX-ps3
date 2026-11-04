@@ -344,7 +344,7 @@ extern void PS3LuaRawBootLogStatus(int status, int callbackReturned);
       [=[    PS3_LUA_CORE_TRACE_STATUS(lj.status, -6); /* PS3 Lua status checkpoint at callback entry */]=]
       [=[    ps3_status_after_setjmp = lj.status;
     PS3_LUA_CORE_TRACE_STATUS(ps3_status_before_setjmp, -8); /* status before setjmp */
-    PS3_LUA_CORE_TRACE_STATUS(ps3_status_after_setjmp, -6); /* status immediately after setjmp */
+    PS3_LUA_CORE_TRACE_STATUS(ps3_status_after_setjmp, -6); /* PS3 Lua status checkpoint at callback entry; immediately after setjmp */
     lj.status = LUA_OK; /* re-establish success status after PPU setjmp */
     PS3_LUA_CORE_TRACE_STATUS(lj.status, -9); /* status after normalization */]=]
       _ps3_lua_do_content "${_ps3_lua_do_content}")
