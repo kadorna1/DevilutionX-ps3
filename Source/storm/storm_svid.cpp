@@ -538,10 +538,11 @@ bool SVidPlayContinue()
 	const uint32_t frameNumber = Smacker_GetCurrentFrameNum(SVidHandle);
 	const uint32_t continueIndex = SVidDebugContinueCount++;
 	const bool traceFrame = continueIndex < 3 || continueIndex % 60 == 0;
+	const uint64_t frameDeadline = SVidFrameEnd;
 	const uint64_t entryTime = GetTicksSmk();
-	const int64_t deadlineOffsetMs = entryTime >= SVidFrameEnd
-	    ? static_cast<int64_t>(TimeSmkToMs(entryTime - SVidFrameEnd))
-	    : -static_cast<int64_t>(TimeSmkToMs(SVidFrameEnd - entryTime));
+	const int64_t deadlineOffsetMs = entryTime >= frameDeadline
+	    ? static_cast<int64_t>(TimeSmkToMs(entryTime - frameDeadline))
+	    : -static_cast<int64_t>(TimeSmkToMs(frameDeadline - entryTime));
 	const Uint32 paletteStartTicks = traceFrame ? SDL_GetTicks() : 0;
 #else
 	const bool traceFrame = false;
@@ -552,9 +553,9 @@ bool SVidPlayContinue()
 	const Uint32 paletteMs = traceFrame ? SDL_GetTicks() - paletteStartTicks : 0;
 #endif
 
-	if (GetTicksSmk() >= SVidFrameEnd) {
+	if (GetTicksSmk() >= frameDeadline) {
 #ifdef __PS3__
-		const uint64_t lateByMs = TimeSmkToMs(GetTicksSmk() - SVidFrameEnd);
+		const uint64_t lateByMs = TimeSmkToMs(GetTicksSmk() - frameDeadline);
 #endif
 #if defined(USE_SDL3) && !defined(NOSOUND)
 		if (ShouldPushAudioData()) SDL_ClearAudioStream(SVidAudioStream);
@@ -601,9 +602,9 @@ bool SVidPlayContinue()
 	const Uint32 audioMs = traceFrame ? SDL_GetTicks() - audioStartTicks : 0;
 #endif
 
-	if (GetTicksSmk() >= SVidFrameEnd) {
+	if (GetTicksSmk() >= frameDeadline) {
 #ifdef __PS3__
-		const uint64_t lateByMs = TimeSmkToMs(GetTicksSmk() - SVidFrameEnd);
+		const uint64_t lateByMs = TimeSmkToMs(GetTicksSmk() - frameDeadline);
 		const Uint32 decodeStartTicks = traceFrame ? SDL_GetTicks() : 0;
 #endif
 		const bool hasNextFrame = SVidLoadNextFrame();
@@ -631,8 +632,8 @@ bool SVidPlayContinue()
 
 	const uint64_t now = GetTicksSmk();
 	Uint32 pacingWaitMs = 0;
-	if (now < SVidFrameEnd) {
-		const Uint32 delayMs = static_cast<Uint32>(TimeSmkToMs(SVidFrameEnd - now));
+	if (now < frameDeadline) {
+		const Uint32 delayMs = static_cast<Uint32>(TimeSmkToMs(frameDeadline - now));
 		const Uint32 waitStartTicks = traceFrame ? SDL_GetTicks() : 0;
 		SDL_Delay(delayMs); // wait with next frame if the system is too fast
 #ifdef __PS3__
@@ -648,9 +649,9 @@ bool SVidPlayContinue()
 #ifdef __PS3__
 	if (traceFrame) {
 		const Uint32 decodeMs = SDL_GetTicks() - decodeStartTicks;
-		const int64_t lateAfterPresentMs = GetTicksSmk() >= SVidFrameEnd
-		    ? static_cast<int64_t>(TimeSmkToMs(GetTicksSmk() - SVidFrameEnd))
-		    : -static_cast<int64_t>(TimeSmkToMs(SVidFrameEnd - GetTicksSmk()));
+		const int64_t lateAfterPresentMs = GetTicksSmk() >= frameDeadline
+		    ? static_cast<int64_t>(TimeSmkToMs(GetTicksSmk() - frameDeadline))
+		    : -static_cast<int64_t>(TimeSmkToMs(frameDeadline - GetTicksSmk()));
 		LogInfo("PS3 FMV: frame {} timing: deadline_offset={} ms late_after={} ms palette={} ms audio={} ms presentation={} ms [setup={} lock={} expand={} copy={} present={}] wait={} ms decode_next={} ms total={} ms next={}",
 		    frameNumber, deadlineOffsetMs, lateAfterPresentMs, paletteMs, audioMs, presentationMs,
 		    renderStats.textureSetupMs, renderStats.textureLockMs, renderStats.pixelExpandMs,
