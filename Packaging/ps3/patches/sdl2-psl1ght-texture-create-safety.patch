@@ -51,15 +51,3 @@ diff --git a/src/render/psl1ght/SDL_PSL1GHTrender.c b/src/render/psl1ght/SDL_PSL
 +        texture->w, texture->h, (unsigned int)allocationSize);
      return 0;
  }
-@@ -820,6 +838,11 @@
-     if (data && !data->first_fb) {
-+        SDL_Log("PSL1GHT texture destroy: pending flip wait begin");
-         waitFlip();
-+        SDL_Log("PSL1GHT texture destroy: pending flip wait complete");
-     }
-
-+    SDL_Log("PSL1GHT texture destroy: RSX free begin ptr=%p", surface->pixels);
-     rsxFree(surface->pixels);
-+    SDL_Log("PSL1GHT texture destroy: RSX free complete");
-     SDL_FreeSurface(surface);
-+    SDL_Log("PSL1GHT texture destroy complete");
