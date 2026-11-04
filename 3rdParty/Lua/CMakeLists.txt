@@ -216,6 +216,7 @@ extern void PS3LuaRawBootLogStatus(int status);
     endif()
 
     file(WRITE "${_ps3_lua_do_source}" "${_ps3_lua_do_content}")
+  file(TOUCH "${_ps3_lua_do_source}")
   endif()
 
 
@@ -223,6 +224,38 @@ extern void PS3LuaRawBootLogStatus(int status);
   # Apply the protected-call diagnostics to pristine sources and older cached
   # build trees (including the previous one-argument status logger version).
   file(READ "${_ps3_lua_do_source}" _ps3_lua_do_content)
+
+  # Newlib's PS3 setjmp.S saves VRSAVE and v20-v31 even though Lua's PPU
+  # compile flags include -mno-altivec. Without __ALTIVEC__ while including
+  # <setjmp.h>, machine/setjmp.h allocates only 32 doubles (256 bytes), but
+  # the linked assembly writes a 448-byte context after alignment. That
+  # overruns lua_longjmp::status and the caller's stack frame. Select the
+  # AltiVec-sized jmp_buf layout only for this header; do not enable VMX
+  # code generation in Lua itself.
+  if(NOT _ps3_lua_do_content MATCHES "PS3 Newlib AltiVec jmp_buf sizing")
+    string(REPLACE
+      [=[#include <setjmp.h>]=]
+      [=[#ifdef __PS3__
+#ifndef __ALTIVEC__
+#define PS3_LUA_UNDEFINE_ALTIVEC_AFTER_SETJMP_H 1
+#define __ALTIVEC__ 1
+#endif
+#endif
+#include <setjmp.h>
+#ifdef PS3_LUA_UNDEFINE_ALTIVEC_AFTER_SETJMP_H
+#undef __ALTIVEC__
+#undef PS3_LUA_UNDEFINE_ALTIVEC_AFTER_SETJMP_H
+#endif
+#ifdef __PS3__
+typedef char ps3_lua_jmp_buf_must_fit_newlib_vmx_context[
+    sizeof(jmp_buf) >= 464 ? 1 : -1];
+#endif
+/* PS3 Newlib AltiVec jmp_buf sizing */]=]
+      _ps3_lua_do_content "${_ps3_lua_do_content}")
+    if(NOT _ps3_lua_do_content MATCHES "ps3_lua_jmp_buf_must_fit_newlib_vmx_context")
+      message(FATAL_ERROR "Failed to apply PS3 Newlib AltiVec jmp_buf sizing fix")
+    endif()
+  endif()
 
   # Keep the C and C++ sides of the diagnostic function signature identical.
   string(REPLACE
@@ -390,16 +423,20 @@ extern void PS3LuaRawBootLogStatus(int status, int callbackReturned);
       [=[    PS3_LUA_CORE_TRACE_STATUS(lj.status, -6); /* PS3 Lua status checkpoint at callback entry */]=]
       [=[    ps3_status_after_setjmp = lj.status;
     PS3_LUA_CORE_TRACE_STATUS(ps3_status_before_setjmp, -8); /* status before setjmp */
-    PS3_LUA_CORE_TRACE_STATUS(ps3_status_after_setjmp, -6); /* PS3 Lua status checkpoint at callback entry; immediately after setjmp */
-    lj.status = LUA_OK; /* re-establish success status after PPU setjmp */
-    PS3_LUA_CORE_TRACE_STATUS(lj.status, -9); /* status after normalization */]=]
+    PS3_LUA_CORE_TRACE_STATUS(ps3_status_after_setjmp, -6); /* PS3 Lua status checkpoint at callback entry; immediately after setjmp */]=]
       _ps3_lua_do_content "${_ps3_lua_do_content}")
     if(NOT _ps3_lua_do_content MATCHES "ps3_status_before_setjmp = lj.status" OR
-       NOT _ps3_lua_do_content MATCHES "ps3_status_after_setjmp = lj.status" OR
-       NOT _ps3_lua_do_content MATCHES "re-establish success status after PPU setjmp")
+       NOT _ps3_lua_do_content MATCHES "ps3_status_after_setjmp = lj.status")
       message(FATAL_ERROR "Failed to apply PS3 Lua post-setjmp status correction")
     endif()
   endif()
+
+  # Remove the previous workaround which hid the setjmp buffer overrun.
+  string(REPLACE
+    [=[    lj.status = LUA_OK; /* re-establish success status after PPU setjmp */
+    PS3_LUA_CORE_TRACE_STATUS(lj.status, -9); /* status after normalization */]=]
+    [=[]=]
+    _ps3_lua_do_content "${_ps3_lua_do_content}")
 
   # Record every explicit Lua throw that writes to the active protected call.
   if(NOT _ps3_lua_do_content MATCHES "PS3_LUA_CORE_TRACE_STATUS\\(errcode, -1\\)")
