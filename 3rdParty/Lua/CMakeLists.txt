@@ -100,6 +100,12 @@ if(CMAKE_SYSTEM_NAME STREQUAL "PS3")
     file(WRITE "${_ps3_lua_state_source}" "${_ps3_lua_state_content}")
   endif()
 
+  # FetchContent's restored source tree can be newer than the cached object
+  # even when the source was upgraded during configuration. Touch this one
+  # generated source after its instrumentation is validated so Ninja must
+  # rebuild lstate.c and the linked Lua archive for this revision.
+  file(TOUCH "${_ps3_lua_state_source}")
+
   # Trace and harden the protected-call boundary separately from f_luaopen.
   # CMake bracket arguments keep the C source fragments literal.
   set(_ps3_lua_do_source "${lua_SOURCE_DIR}/lua-5.4.7/src/ldo.c")
