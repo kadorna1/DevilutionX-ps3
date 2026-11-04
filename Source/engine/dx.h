@@ -42,6 +42,8 @@ struct PS3FMVRenderStats {
 
 /** Upload and present an indexed Smacker frame directly through the RSX texture. */
 bool RenderIndexedVideoFrame(const Uint8 *pixels, int width, int height, const SDL_Color *palette, PS3FMVRenderStats *stats);
+/** Upload and present an ARGB32 frame returned by Cell VDEC. */
+bool RenderDecodedVideoFrame(const Uint8 *pixels, int width, int height, int sourcePitch);
 #endif
 
 } // namespace devilution
