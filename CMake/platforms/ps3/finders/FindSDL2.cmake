@@ -85,6 +85,17 @@ if(NOT TARGET SDL2::SDL2)
   )
 endif()
 
+# Match the SDL2 CMake package's optional main-wrapper target. Keep it static
+# as well; the PS3 runtime cannot load a shared SDL2main library.
+set(_sdl2_main_archive "${_sdl2_prefix}/lib/libSDL2main.a")
+if(EXISTS "${_sdl2_main_archive}" AND NOT TARGET SDL2::SDL2main)
+  add_library(SDL2::SDL2main STATIC IMPORTED)
+  set_target_properties(SDL2::SDL2main PROPERTIES
+    IMPORTED_LINK_INTERFACE_LANGUAGES "C"
+    IMPORTED_LOCATION "${_sdl2_main_archive}"
+  )
+endif()
+
 set(SDL2_LIBRARIES SDL2::SDL2)
 set(SDL2_INCLUDE_DIR ${SDL2_INCLUDE_DIRS})
 execute_process(
