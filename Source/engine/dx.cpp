@@ -376,8 +376,7 @@ bool RenderIndexedVideoFrame(const Uint8 *pixels, int width, int height, const S
 	static bool paletteCacheValid = false;
 	if (!paletteCacheValid || cachedFormat != textureFormat
 	    || std::memcmp(cachedColors, palette, sizeof(cachedColors)) != 0) {
-		if (traceFrame) LogInfo("PS3 FMV RSX: texture {}x{} format 0x{:08x}", textureWidth, textureHeight, textureFormat);
-	SDL_PixelFormat *pixelFormat = SDL_AllocFormat(textureFormat);
+		SDL_PixelFormat *pixelFormat = SDL_AllocFormat(textureFormat);
 		if (pixelFormat == nullptr) {
 			LogError("PS3 FMV could not allocate texture pixel format: {}", SDL_GetError());
 			return false;
@@ -392,8 +391,9 @@ bool RenderIndexedVideoFrame(const Uint8 *pixels, int width, int height, const S
 		paletteCacheValid = true;
 	}
 
+	if (traceFrame) LogInfo("PS3 FMV RSX: texture {}x{} format 0x{:08x}; palette ready",
+	    textureWidth, textureHeight, textureFormat);
 	const SDL_Rect fullFrameRect { 0, 0, width, height };
-	if (traceFrame) LogInfo("PS3 FMV RSX: palette converted");
 	void *lockedPixels = nullptr;
 	int lockedPitch = 0;
 	if (SDL_LockTexture(texture.get(), &fullFrameRect, &lockedPixels, &lockedPitch) < 0) {
