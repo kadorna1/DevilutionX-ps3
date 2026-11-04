@@ -110,6 +110,7 @@ jobs:
           python3 Packaging/ps3/incremental.py record build-ps3
           ccache --show-stats | tee build-ps3/ccache-stats.txt
           LDO="build-ps3/_deps/lua-src/lua-5.4.7/src/ldo.c"
+          LSTATE="build-ps3/_deps/lua-src/lua-5.4.7/src/lstate.c"
           if [[ -f "$LDO" ]]; then
             sed -n '/int luaD_rawrunprotected/,/^}/p' "$LDO" \
               | tee build-ps3/lua-protected-call-source.txt
@@ -117,9 +118,19 @@ jobs:
             echo "Lua ldo.c not found at expected FetchContent path: $LDO" \
               | tee build-ps3/lua-protected-call-source.txt
           fi
+          if [[ -f "$LSTATE" ]]; then
+            sed -n '/lua_State \*lua_newstate/,/^}/p' "$LSTATE" \
+              | tee build-ps3/lua-state-construction-source.txt
+          else
+            echo "Lua lstate.c not found at expected FetchContent path: $LSTATE" \
+              | tee build-ps3/lua-state-construction-source.txt
+          fi
           ninja -C build-ps3 -t commands \
             | grep -E 'ldo\.c.*(obj|o)( |$)' \
             | tee build-ps3/lua-ldo-compile-command.txt || true
+          ninja -C build-ps3 -t commands \
+            | grep -E 'lstate\.c.*(obj|o)( |$)' \
+            | tee build-ps3/lua-lstate-compile-command.txt || true
 
       - name: Verify linked PPU ELF
         run: |
@@ -164,7 +175,9 @@ jobs:
             build-ps3/ppu-elf-info.txt
             build-ps3/ccache-stats.txt
             build-ps3/lua-protected-call-source.txt
+            build-ps3/lua-state-construction-source.txt
             build-ps3/lua-ldo-compile-command.txt
+            build-ps3/lua-lstate-compile-command.txt
           if-no-files-found: error
       
       - name: Create PS3 SELF and PKG
