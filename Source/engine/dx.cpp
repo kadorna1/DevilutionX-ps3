@@ -424,6 +424,11 @@ bool RenderIndexedVideoFrame(const Uint8 *pixels, int width, int height, const S
 		return false;
 	}
 	SDL_RenderPresent(renderer);
+	static bool activePathLogged = false;
+	if (!activePathLogged) {
+		LogInfo("PS3 FMV: direct indexed-to-RSX texture upload active");
+		activePathLogged = true;
+	}
 	return true;
 }
 #endif
