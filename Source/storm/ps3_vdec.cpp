@@ -47,6 +47,24 @@ constexpr size_t VdecMemoryPageSize = 1024 * 1024;
 constexpr size_t VdecPacketAlignment = 128;
 constexpr size_t VdecOutputAlignment = 128;
 
+// Allocate extra space and retain the original malloc pointer so the aligned
+// address can still be released safely with free().
+void *AllocateAlignedBuffer(size_t size, size_t alignment, void *&allocation)
+{
+	if (size == 0 || alignment == 0 || (alignment & (alignment - 1)) != 0)
+		return nullptr;
+	if (size > std::numeric_limits<size_t>::max() - (alignment - 1))
+		return nullptr;
+
+	void *base = std::malloc(size + alignment - 1);
+	if (base == nullptr)
+		return nullptr;
+	const uintptr_t address = reinterpret_cast<uintptr_t>(base);
+	const uintptr_t alignedAddress = (address + alignment - 1) & ~(static_cast<uintptr_t>(alignment) - 1);
+	allocation = base;
+	return reinterpret_cast<void *>(alignedAddress);
+}
+
 struct AccessUnit {
 	size_t offset = 0;
 	size_t size = 0;
@@ -68,10 +86,12 @@ struct VdecMovieState {
 	MovieMetadata metadata;
 	std::vector<AccessUnit> accessUnits;
 	Uint8 *videoData = nullptr;
+	void *videoDataAllocation = nullptr;
 	size_t videoSize = 0;
 	std::unique_ptr<char[]> audioData;
 	size_t audioSize = 0;
 	Uint8 *decodedFrame = nullptr;
+	void *decodedFrameAllocation = nullptr;
 	size_t decodedFrameSize = 0;
 	int codedWidth = 0;
 	int codedHeight = 0;
@@ -318,8 +338,8 @@ bool LoadMovieAssets(const char *filename, VdecMovieState &state)
 		    videoAsset.has_value() ? "empty file" : videoAsset.error());
 		return false;
 	}
-	void *alignedVideo = nullptr;
-	if (posix_memalign(&alignedVideo, VdecPacketAlignment, videoAsset->size) != 0 || alignedVideo == nullptr) {
+	void *alignedVideo = AllocateAlignedBuffer(videoAsset->size, VdecPacketAlignment, state.videoDataAllocation);
+	if (alignedVideo == nullptr) {
 		LogError("PS3 VDEC: cannot allocate {} bytes for H.264 stream", videoAsset->size);
 		return false;
 	}
@@ -500,8 +520,8 @@ bool AllocateDecodedFrame(VdecMovieState &state)
 	if (alignedWidth > std::numeric_limits<size_t>::max() / alignedHeight / 4)
 		return false;
 	state.decodedFrameSize = alignedWidth * alignedHeight * 4;
-	void *buffer = nullptr;
-	if (posix_memalign(&buffer, VdecOutputAlignment, state.decodedFrameSize) != 0 || buffer == nullptr) {
+	void *buffer = AllocateAlignedBuffer(state.decodedFrameSize, VdecOutputAlignment, state.decodedFrameAllocation);
+	if (buffer == nullptr) {
 		LogError("PS3 VDEC: could not allocate {} bytes for decoded frame", state.decodedFrameSize);
 		return false;
 	}
@@ -675,9 +695,11 @@ void DestroyVdecMovieState(VdecMovieState &state, bool restoreTexture)
 		SDL_DestroyMutex(state.mutex);
 		state.mutex = nullptr;
 	}
-	std::free(state.decodedFrame);
+	std::free(state.decodedFrameAllocation);
+	state.decodedFrameAllocation = nullptr;
 	state.decodedFrame = nullptr;
-	std::free(state.videoData);
+	std::free(state.videoDataAllocation);
+	state.videoDataAllocation = nullptr;
 	state.videoData = nullptr;
 }
 
