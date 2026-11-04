@@ -112,6 +112,8 @@ jobs:
           LDO="build-ps3/_deps/lua-src/lua-5.4.7/src/ldo.c"
           LSTATE="build-ps3/_deps/lua-src/lua-5.4.7/src/lstate.c"
           if [[ -f "$LDO" ]]; then
+            sed -n '1,55p' "$LDO" \
+              | tee build-ps3/lua-setjmp-layout-source.txt
             sed -n '/int luaD_rawrunprotected/,/^}/p' "$LDO" \
               | tee build-ps3/lua-protected-call-source.txt
           else
@@ -175,6 +177,7 @@ jobs:
             build-ps3/ppu-elf-info.txt
             build-ps3/ccache-stats.txt
             build-ps3/lua-protected-call-source.txt
+            build-ps3/lua-setjmp-layout-source.txt
             build-ps3/lua-state-construction-source.txt
             build-ps3/lua-ldo-compile-command.txt
             build-ps3/lua-lstate-compile-command.txt
