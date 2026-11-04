@@ -1358,6 +1358,14 @@ void DiabloSplash()
 
 	auto &intro = gbIsHellfire ? GetOptions().StartUp.hellfireIntro : GetOptions().StartUp.diabloIntro;
 #ifdef __PS3__
+	// Temporary PS3 diagnostic override: make the Diablo intro play even if
+	// a previous Once setting has already been persisted as Off. This lets us
+	// isolate intro-FMV playback from the title-screen failure.
+	const int configuredIntroOption = static_cast<int>(*intro);
+	if (!gbIsHellfire) {
+		intro.SetValue(StartUpIntro::On);
+		LogInfo("PS3 splash: forcing Diablo intro On for diagnostic playback; configured option={}", configuredIntroOption);
+	}
 	LogInfo("PS3 splash: intro option={}", static_cast<int>(*intro));
 #endif
 	if (*intro != StartUpIntro::Off) {
