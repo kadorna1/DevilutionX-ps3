@@ -219,6 +219,8 @@ bool ParseMetadata(std::string_view contents, MovieMetadata &metadata)
 		return false;
 	if (metadata.fpsNumerator > 120000 || metadata.fpsDenominator > 10000)
 		return false;
+	if (metadata.audioRate > 48000 || metadata.audioChannels > 2)
+		return false;
 	if (!IsSafeRelativeAssetPath(metadata.videoPath))
 		return false;
 	if (!metadata.audioPath.empty() && metadata.audioPath != "none" && !IsSafeRelativeAssetPath(metadata.audioPath))
@@ -611,6 +613,7 @@ bool RestartVdecSequence(VdecMovieState &state)
 {
 	if (!EndVdecSequenceAndWait(state))
 		return false;
+	state.sequenceStarted = false;
 	const s32 result = vdecStartSequence(state.decoderHandle);
 	if (result != 0) {
 		LogError("PS3 VDEC: vdecStartSequence during loop failed: 0x{:08x}", static_cast<unsigned int>(result));
