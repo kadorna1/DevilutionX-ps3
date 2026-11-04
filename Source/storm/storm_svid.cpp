@@ -533,12 +533,12 @@ bool SVidPlayBegin(const char *filename, int flags)
 
 bool SVidPlayContinue()
 {
+	const uint64_t frameDeadline = SVidFrameEnd;
 #ifdef __PS3__
 	const Uint32 continueStartTicks = SDL_GetTicks();
 	const uint32_t frameNumber = Smacker_GetCurrentFrameNum(SVidHandle);
 	const uint32_t continueIndex = SVidDebugContinueCount++;
 	const bool traceFrame = continueIndex < 3 || continueIndex % 60 == 0;
-	const uint64_t frameDeadline = SVidFrameEnd;
 	const uint64_t entryTime = GetTicksSmk();
 	const int64_t deadlineOffsetMs = entryTime >= frameDeadline
 	    ? static_cast<int64_t>(TimeSmkToMs(entryTime - frameDeadline))
