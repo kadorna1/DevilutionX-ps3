@@ -31,7 +31,6 @@ SDL2_JOYSTICK_BLOB="f7b2d2a8239c2052653f95ce155e656e9bdc431e"
 SDL2_SOURCE="$BUILD_DIR/_deps/sdl2-psl1ght"
 PATCH_FILE="$ROOT/Packaging/ps3/patches/sdl2-psl1ght-ppu-flip-wait.patch"
 TEXTURE_FREE_PATCH_FILE="$ROOT/Packaging/ps3/patches/sdl2-psl1ght-texture-free-flip-wait.patch"
-TEXTURE_CREATE_PATCH_FILE="$ROOT/Packaging/ps3/patches/sdl2-psl1ght-texture-create-safety.patch"
 JOYSTICK_PATCH_FILE="$ROOT/Packaging/ps3/patches/sdl2-psl1ght-controller-input.patch"
 
 mkdir -p "$(dirname "$SDL2_SOURCE")"
@@ -96,17 +95,133 @@ if grep -Fq "TODO: Wait for the DMA transfer to complete" "$SDL2_SOURCE/$SDL2_RE
   exit 1
 fi
 
-# Guard and trace each RSX texture allocation so allocation failure is not
-# dereferenced by the SDL renderer. This applies independently to restored caches.
-if ! grep -Fq "PSL1GHT texture create begin" "$SDL2_SOURCE/$SDL2_RENDERER"; then
-  git -C "$SDL2_SOURCE" apply --check "$TEXTURE_CREATE_PATCH_FILE"
-  git -C "$SDL2_SOURCE" apply "$TEXTURE_CREATE_PATCH_FILE"
-fi
-grep -Fq "PSL1GHT texture create begin" "$SDL2_SOURCE/$SDL2_RENDERER"
-grep -Fq "PSL1GHT texture allocation failed" "$SDL2_SOURCE/$SDL2_RENDERER"
-grep -Fq "SDL_OutOfMemory();" "$SDL2_SOURCE/$SDL2_RENDERER"
-grep -Fq "rsxFree(pixels);" "$SDL2_SOURCE/$SDL2_RENDERER"
-echo "Validated PSL1GHT RSX texture allocation and cleanup guards"
+# Guard and trace RSX texture allocation. Use an exact function replacement
+# instead of git-apply for this hunk: the surrounding SDL renderer receives
+# other patches above, and this avoids fragile unified-diff offsets/context.
+python3 - "$SDL2_SOURCE/$SDL2_RENDERER" <<'PYTHON'
+from pathlib import Path
+import sys
+
+source_path = Path(sys.argv[1])
+source = source_path.read_bytes().decode("utf-8")
+start_marker = "static int\\nPSL1GHT_CreateTexture(SDL_Renderer * renderer, SDL_Texture * texture)\\n{"
+end_marker = "\\nstatic int\\nPSL1GHT_UpdateTexture"
+start = source.find(start_marker)
+end = source.find(end_marker, start + len(start_marker))
+if start < 0 or end < 0:
+    raise SystemExit("error: could not locate the exact SDL2 PSL1GHT_CreateTexture function")
+
+current = source[start:end]
+required = (
+    "PSL1GHT texture create begin",
+    "PSL1GHT texture allocation failed",
+    "SDL_OutOfMemory();",
+    "rsxFree(pixels);",
+)
+if all(marker in current for marker in required):
+    print("SDL2 RSX texture allocation guards already present")
+else:
+    expected = """static int
+PSL1GHT_CreateTexture(SDL_Renderer * renderer, SDL_Texture * texture)
+{
+    int bpp;
+    int pitch;
+    void *pixels;
+    Uint32 Rmask, Gmask, Bmask, Amask;
+
+    if (!SDL_PixelFormatEnumToMasks
+        (texture->format, &bpp, &Rmask, &Gmask, &Bmask, &Amask)) {
+        SDL_SetError("Unknown texture format");
+        return -1;
+    }
+
+    // Allocate GFX memory for textures
+    pitch = texture->w * SDL_BYTESPERPIXEL(texture->format);
+    pixels = rsxMemalign(64, texture->h * pitch);
+
+    texture->driverdata =
+        SDL_CreateRGBSurfaceFrom(pixels, texture->w, texture->h, bpp, pitch,
+                            Rmask, Gmask, Bmask, Amask);
+
+    SDL_SetSurfaceColorMod(texture->driverdata, texture->r, texture->g,
+                           texture->b);
+    SDL_SetSurfaceAlphaMod(texture->driverdata, texture->a);
+    SDL_SetSurfaceBlendMode(texture->driverdata, texture->blendMode);
+
+    if (!texture->driverdata) {
+        return -1;
+    }
+    return 0;
+}"""
+    if current != expected:
+        raise SystemExit(
+            "error: SDL2 PSL1GHT_CreateTexture differs from the verified upstream function; "
+            "refusing an unsafe automatic replacement"
+        )
+
+    replacement = """static int
+PSL1GHT_CreateTexture(SDL_Renderer * renderer, SDL_Texture * texture)
+{
+    int bpp;
+    int pitch;
+    void *pixels;
+    Uint32 Rmask, Gmask, Bmask, Amask;
+
+    SDL_Log("PSL1GHT texture create begin: %dx%d format=0x%08x",
+        texture->w, texture->h, texture->format);
+    if (!SDL_PixelFormatEnumToMasks
+        (texture->format, &bpp, &Rmask, &Gmask, &Bmask, &Amask)) {
+        SDL_SetError("Unknown texture format");
+        SDL_Log("PSL1GHT texture create failed: unsupported pixel format");
+        return -1;
+    }
+
+    // Allocate GFX memory for textures
+    pitch = texture->w * SDL_BYTESPERPIXEL(texture->format);
+    const size_t allocationSize = (size_t)texture->h * (size_t)pitch;
+    SDL_Log("PSL1GHT texture create: RSX allocation begin bytes=%u pitch=%d",
+        (unsigned int)allocationSize, pitch);
+    pixels = rsxMemalign(64, allocationSize);
+    if (!pixels) {
+        SDL_Log("PSL1GHT texture allocation failed: rsxMemalign returned NULL");
+        SDL_OutOfMemory();
+        return -1;
+    }
+    SDL_Log("PSL1GHT texture create: RSX allocation complete ptr=%p", pixels);
+
+    texture->driverdata =
+        SDL_CreateRGBSurfaceFrom(pixels, texture->w, texture->h, bpp, pitch,
+                            Rmask, Gmask, Bmask, Amask);
+    if (!texture->driverdata) {
+        SDL_Log("PSL1GHT texture create failed: SDL_CreateRGBSurfaceFrom: %s",
+            SDL_GetError());
+        rsxFree(pixels);
+        return -1;
+    }
+    SDL_Log("PSL1GHT texture create: surface complete ptr=%p", texture->driverdata);
+
+    SDL_SetSurfaceColorMod(texture->driverdata, texture->r, texture->g,
+                           texture->b);
+    SDL_SetSurfaceAlphaMod(texture->driverdata, texture->a);
+    SDL_SetSurfaceBlendMode(texture->driverdata, texture->blendMode);
+
+    SDL_Log("PSL1GHT texture create complete: %dx%d bytes=%u",
+        texture->w, texture->h, (unsigned int)allocationSize);
+    return 0;
+}"""
+    source = source[:start] + replacement + source[end:]
+    source_path.write_bytes(source.encode("utf-8"))
+    print("Applied exact SDL2 RSX texture allocation guard replacement")
+
+updated = source_path.read_bytes().decode("utf-8")
+function_start = updated.find(start_marker)
+function_end = updated.find(end_marker, function_start + len(start_marker))
+function = updated[function_start:function_end]
+for marker in required:
+    if marker not in function:
+        raise SystemExit(f"error: SDL2 RSX texture allocation guard missing after edit: {marker}")
+print("Validated SDL2 RSX texture allocation and cleanup guards")
+PYTHON
 
 actual_joystick_blob="$(git -C "$SDL2_SOURCE" rev-parse "HEAD:$SDL2_JOYSTICK")"
 if [[ "$actual_joystick_blob" != "$SDL2_JOYSTICK_BLOB" ]]; then
