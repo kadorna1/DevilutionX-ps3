@@ -1,22 +1,58 @@
 diff --git a/src/render/psl1ght/SDL_PSL1GHTrender.c b/src/render/psl1ght/SDL_PSL1GHTrender.c
 --- a/src/render/psl1ght/SDL_PSL1GHTrender.c
 +++ b/src/render/psl1ght/SDL_PSL1GHTrender.c
-@@ -267,27 +267,45 @@
-     void *pixels;
-     Uint32 Rmask, Gmask, Bmask, Amask;
-
+@@ -259,32 +259,50 @@
+-static int
+-PSL1GHT_CreateTexture(SDL_Renderer * renderer, SDL_Texture * texture)
+-{
+-    int bpp;
+-    int pitch;
+-    void *pixels;
+-    Uint32 Rmask, Gmask, Bmask, Amask;
+-
+-    if (!SDL_PixelFormatEnumToMasks
+-        (texture->format, &bpp, &Rmask, &Gmask, &Bmask, &Amask)) {
+-        SDL_SetError("Unknown texture format");
+-        return -1;
+-    }
+-
+-    // Allocate GFX memory for textures
+-    pitch = texture->w * SDL_BYTESPERPIXEL(texture->format);
+-    pixels = rsxMemalign(64, texture->h * pitch);
+-
+-    texture->driverdata =
+-        SDL_CreateRGBSurfaceFrom(pixels, texture->w, texture->h, bpp, pitch,
+-                            Rmask, Gmask, Bmask, Amask);
+-
+-    SDL_SetSurfaceColorMod(texture->driverdata, texture->r, texture->g,
+-                           texture->b);
+-    SDL_SetSurfaceAlphaMod(texture->driverdata, texture->a);
+-    SDL_SetSurfaceBlendMode(texture->driverdata, texture->blendMode);
+-
+-    if (!texture->driverdata) {
+-        return -1;
+-    }
+-    return 0;
+-}
++static int
++PSL1GHT_CreateTexture(SDL_Renderer * renderer, SDL_Texture * texture)
++{
++    int bpp;
++    int pitch;
++    void *pixels;
++    Uint32 Rmask, Gmask, Bmask, Amask;
++
 +    SDL_Log("PSL1GHT texture create begin: %dx%d format=0x%08x",
 +        texture->w, texture->h, texture->format);
-     if (!SDL_PixelFormatEnumToMasks
-         (texture->format, &bpp, &Rmask, &Gmask, &Bmask, &Amask)) {
-         SDL_SetError("Unknown texture format");
++    if (!SDL_PixelFormatEnumToMasks
++        (texture->format, &bpp, &Rmask, &Gmask, &Bmask, &Amask)) {
++        SDL_SetError("Unknown texture format");
 +        SDL_Log("PSL1GHT texture create failed: unsupported pixel format");
-         return -1;
-     }
-
-     // Allocate GFX memory for textures
-     pitch = texture->w * SDL_BYTESPERPIXEL(texture->format);
--    pixels = rsxMemalign(64, texture->h * pitch);
++        return -1;
++    }
++
++    // Allocate GFX memory for textures
++    pitch = texture->w * SDL_BYTESPERPIXEL(texture->format);
 +    const size_t allocationSize = (size_t)texture->h * (size_t)pitch;
 +    SDL_Log("PSL1GHT texture create: RSX allocation begin bytes=%u pitch=%d",
 +        (unsigned int)allocationSize, pitch);
@@ -27,10 +63,10 @@ diff --git a/src/render/psl1ght/SDL_PSL1GHTrender.c b/src/render/psl1ght/SDL_PSL
 +        return -1;
 +    }
 +    SDL_Log("PSL1GHT texture create: RSX allocation complete ptr=%p", pixels);
-
-     texture->driverdata =
-         SDL_CreateRGBSurfaceFrom(pixels, texture->w, texture->h, bpp, pitch,
-                             Rmask, Gmask, Bmask, Amask);
++
++    texture->driverdata =
++        SDL_CreateRGBSurfaceFrom(pixels, texture->w, texture->h, bpp, pitch,
++                            Rmask, Gmask, Bmask, Amask);
 +    if (!texture->driverdata) {
 +        SDL_Log("PSL1GHT texture create failed: SDL_CreateRGBSurfaceFrom: %s",
 +            SDL_GetError());
@@ -38,16 +74,13 @@ diff --git a/src/render/psl1ght/SDL_PSL1GHTrender.c b/src/render/psl1ght/SDL_PSL
 +        return -1;
 +    }
 +    SDL_Log("PSL1GHT texture create: surface complete ptr=%p", texture->driverdata);
-
-     SDL_SetSurfaceColorMod(texture->driverdata, texture->r, texture->g,
-                            texture->b);
-     SDL_SetSurfaceAlphaMod(texture->driverdata, texture->a);
-     SDL_SetSurfaceBlendMode(texture->driverdata, texture->blendMode);
-
--    if (!texture->driverdata) {
--        return -1;
--    }
++
++    SDL_SetSurfaceColorMod(texture->driverdata, texture->r, texture->g,
++                           texture->b);
++    SDL_SetSurfaceAlphaMod(texture->driverdata, texture->a);
++    SDL_SetSurfaceBlendMode(texture->driverdata, texture->blendMode);
++
 +    SDL_Log("PSL1GHT texture create complete: %dx%d bytes=%u",
 +        texture->w, texture->h, (unsigned int)allocationSize);
-     return 0;
- }
++    return 0;
++}
