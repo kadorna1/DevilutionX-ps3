@@ -26,8 +26,11 @@ SDL2_REPO="https://github.com/shagkur/SDL_PSL1GHT.git"
 SDL2_BRANCH="sdl2_master"
 SDL2_RENDERER="src/render/psl1ght/SDL_PSL1GHTrender.c"
 SDL2_RENDERER_BLOB="3d5cf9b41bc7639d1da79b6f7059350a1bf57052"
+SDL2_JOYSTICK="src/joystick/psl1ght/SDL_sysjoystick.c"
+SDL2_JOYSTICK_BLOB="f7b2d2a8239c2052653f95ce155e656e9bdc431e"
 SDL2_SOURCE="$BUILD_DIR/_deps/sdl2-psl1ght"
 PATCH_FILE="$ROOT/Packaging/ps3/patches/sdl2-psl1ght-ppu-flip-wait.patch"
+JOYSTICK_PATCH_FILE="$ROOT/Packaging/ps3/patches/sdl2-psl1ght-controller-input.patch"
 
 mkdir -p "$(dirname "$SDL2_SOURCE")"
 if [[ ! -d "$SDL2_SOURCE/.git" ]]; then
@@ -54,6 +57,21 @@ if grep -Fq "gcmSetWaitFlip(data->context)" "$SDL2_SOURCE/$SDL2_RENDERER"; then
   exit 1
 fi
 
+actual_joystick_blob="$(git -C "$SDL2_SOURCE" rev-parse "HEAD:$SDL2_JOYSTICK")"
+if [[ "$actual_joystick_blob" != "$SDL2_JOYSTICK_BLOB" ]]; then
+  echo "error: SDL2 PSL1GHT joystick source changed unexpectedly" >&2
+  echo "expected blob: $SDL2_JOYSTICK_BLOB" >&2
+  echo "actual blob:   $actual_joystick_blob" >&2
+  exit 1
+fi
+
+if ! grep -Fq "Initialize the initial pad snapshot" "$SDL2_SOURCE/$SDL2_JOYSTICK"; then
+  git -C "$SDL2_SOURCE" apply --check "$JOYSTICK_PATCH_FILE"
+  git -C "$SDL2_SOURCE" apply "$JOYSTICK_PATCH_FILE"
+fi
+grep -Fq "Initialize the initial pad snapshot" "$SDL2_SOURCE/$SDL2_JOYSTICK"
+grep -Fq "(Sint16)(((int)new_pad_data.btn - 0x80) * 256)" "$SDL2_SOURCE/$SDL2_JOYSTICK"
+
 # The first run configures SDL2. Later CI runs restore this source/build tree
 # from the existing build cache and only rebuild changed objects.
 if [[ ! -f "$SDL2_SOURCE/Makefile" || ! -f "$SDL2_SOURCE/config.status" ]]; then
@@ -78,6 +96,9 @@ test -s "$SDL2_ARCHIVE" || {
   echo "SDL2 source commit: $(git -C "$SDL2_SOURCE" rev-parse HEAD)"
   echo "SDL2 renderer source blob: $actual_blob"
   echo "Renderer patch: PPU-side flip polling; no gcmSetWaitFlip command"
+  echo "PS3 joystick source blob: $actual_joystick_blob"
+  echo "Controller patch: initialize pad state and center the four analog axes"
+  echo "Controller mapping: DualShock 3 4-axis / 16-button ioPad layout"
   echo "SDL2 version: $(sdl2-config --version)"
   echo "SDL2 prefix: $SDL2_PREFIX"
   echo "SDL2 archive: $SDL2_ARCHIVE"

@@ -1,0 +1,20 @@
+diff --git a/src/joystick/psl1ght/SDL_sysjoystick.c b/src/joystick/psl1ght/SDL_sysjoystick.c
+index f7b2d2a8239c2052653f95ce155e656e9bdc431e..0000000000000000000000000000000000000000 100644
+--- a/src/joystick/psl1ght/SDL_sysjoystick.c
++++ b/src/joystick/psl1ght/SDL_sysjoystick.c
+@@ -164,6 +164,8 @@ SDL_SYS_JoystickOpen(SDL_Joystick * joystick, int device_index)
+     {
+         return -1;
+     }
++    /* Initialize the initial pad snapshot before comparing input samples. */
++    SDL_memset(joystick->hwdata, 0, sizeof(*joystick->hwdata));
+ 
+ 	joystick->naxes = 4;
+ 	joystick->nhats = 0;
+@@ -184,7 +186,7 @@ SDL_SYS_JoystickUpdate(SDL_Joystick * joystick)
+ #define CheckPSL1GHTAxis( btn, bnum) \
+ 	if( new_pad_data.btn != joystick->hwdata->old_pad_data.btn) {\
+-		SDL_PrivateJoystickAxis( joystick, (bnum), ((new_pad_data.btn-0x80)<<8)|new_pad_data.btn); \
++		SDL_PrivateJoystickAxis( joystick, (bnum), (Sint16)(((int)new_pad_data.btn - 0x80) * 256)); \
+ 	} \
+ 	joystick->hwdata->old_pad_data.btn = new_pad_data.btn;

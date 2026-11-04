@@ -37,6 +37,28 @@ add_compile_definitions(
   # libstdc++'s std::filesystem implementation, which calls unavailable
   # fchmod in this SDK's static libstdc++ archive.
   DVL_NO_FILESYSTEM
+  # SDL_PSL1GHT exposes the DualShock pad as four raw axes and 16 buttons.
+  # Match its io/pad.h order to DevilutionX's generic controller controls.
+  JOY_AXIS_LEFTX=0
+  JOY_AXIS_LEFTY=1
+  JOY_AXIS_RIGHTX=2
+  JOY_AXIS_RIGHTY=3
+  JOY_BUTTON_A=9
+  JOY_BUTTON_B=10
+  JOY_BUTTON_X=8
+  JOY_BUTTON_Y=11
+  JOY_BUTTON_BACK=7
+  JOY_BUTTON_START=4
+  JOY_BUTTON_LEFTSTICK=6
+  JOY_BUTTON_RIGHTSTICK=5
+  JOY_BUTTON_LEFTSHOULDER=13
+  JOY_BUTTON_RIGHTSHOULDER=12
+  JOY_BUTTON_TRIGGERLEFT=15
+  JOY_BUTTON_TRIGGERRIGHT=14
+  JOY_BUTTON_DPAD_UP=3
+  JOY_BUTTON_DPAD_DOWN=1
+  JOY_BUTTON_DPAD_LEFT=0
+  JOY_BUTTON_DPAD_RIGHT=2
 )
 
 # Console build: single-player, no desktop or online integrations.
