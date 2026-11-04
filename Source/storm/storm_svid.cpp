@@ -699,6 +699,14 @@ void SVidPlayEnd()
 			SVidAudioDevice = 0;
 		}
 #else
+#ifdef __PS3__
+		if (SVidAudioDecoder != nullptr) {
+			LogInfo("PS3 FMV audio queue: high_water={} samples limit={} samples dropped={} samples",
+			    SVidAudioDecoder->QueueHighWaterSamples(),
+			    SVidAudioDecoder->QueueLimitSamples(),
+			    SVidAudioDecoder->QueueDroppedSamples());
+		}
+#endif
 		SVidAudioStream = std::nullopt;
 		SVidAudioDecoder = nullptr;
 #endif
