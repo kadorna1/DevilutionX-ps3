@@ -80,6 +80,9 @@ SDLSurfaceUniquePtr SVidSurface;
 uint64_t SVidFrameEnd;
 // The length of a frame in SMK time units.
 uint32_t SVidFrameLength;
+#ifdef __PS3__
+uint32_t SVidDebugContinueCount;
+#endif
 
 bool IsLandscapeFit(unsigned long srcW, unsigned long srcH, unsigned long dstW, unsigned long dstH)
 {
@@ -175,9 +178,20 @@ bool SVidLoadNextFrame()
 	}
 
 	SVidFrameEnd += SVidFrameLength;
-
+#ifdef __PS3__
+	const uint32_t frameNumber = Smacker_GetCurrentFrameNum(SVidHandle);
+	const bool traceFrame = frameNumber <= 2 || frameNumber % 60 == 0;
+	const Uint32 decodeStart = SDL_GetTicks();
+	if (traceFrame)
+		LogInfo("PS3 FMV: decode frame {} begin", frameNumber);
+#endif
 	Smacker_GetNextFrame(SVidHandle);
 	Smacker_GetFrame(SVidHandle, SVidFrameBuffer.get());
+#ifdef __PS3__
+	if (traceFrame)
+		LogInfo("PS3 FMV: decode frame {} complete in {} ms",
+		    frameNumber, SDL_GetTicks() - decodeStart);
+#endif
 
 	return true;
 }
@@ -363,6 +377,9 @@ bool SVidPlayBegin(const char *filename, int flags)
 	}
 
 	SVidLoop = false;
+#ifdef __PS3__
+	SVidDebugContinueCount = 0;
+#endif
 	if ((flags & 0x40000) != 0)
 		SVidLoop = true;
 	// 0x8 // Non-interlaced
@@ -520,9 +537,24 @@ bool SVidPlayBegin(const char *filename, int flags)
 
 bool SVidPlayContinue()
 {
+#ifdef __PS3__
+	const uint32_t frameNumber = Smacker_GetCurrentFrameNum(SVidHandle);
+	const bool traceFrame = SVidDebugContinueCount < 3 || SVidDebugContinueCount % 60 == 0;
+	if (traceFrame)
+		LogInfo("PS3 FMV: continue #{} current frame {} begin",
+		    SVidDebugContinueCount, frameNumber);
+#endif
 	if (Smacker_DidPaletteChange(SVidHandle)) {
 		UpdatePalette();
+#ifdef __PS3__
+		if (traceFrame)
+			LogInfo("PS3 FMV: frame {} palette updated", frameNumber);
+#endif
 	}
+#ifdef __PS3__
+	if (traceFrame)
+		LogInfo("PS3 FMV: continue frame {} palette check complete", frameNumber);
+#endif
 
 	if (GetTicksSmk() >= SVidFrameEnd) {
 #if defined(USE_SDL3) && !defined(NOSOUND)
@@ -535,6 +567,10 @@ bool SVidPlayContinue()
 	if (ShouldPushAudioData()) {
 		std::int16_t *buf = SVidAudioBuffer.get();
 		const auto len = Smacker_GetAudioData(SVidHandle, 0, buf);
+#ifdef __PS3__
+		if (traceFrame)
+			LogInfo("PS3 FMV: frame {} audio decoded {} bytes", frameNumber, len);
+#endif
 #ifdef USE_SDL3
 		if (!SDL_PutAudioStreamData(SVidAudioStream, buf, static_cast<int>(len))) {
 			LogError(LogCategory::Audio, "SDL_PutAudioStreamData (from SVidPlayContinue): {}", SDL_GetError());
@@ -548,6 +584,10 @@ bool SVidPlayContinue()
 		} else {
 			SVidAudioDecoder->PushSamples(reinterpret_cast<const std::uint8_t *>(buf), len);
 		}
+#ifdef __PS3__
+		if (traceFrame)
+			LogInfo("PS3 FMV: frame {} audio queued", frameNumber);
+#endif
 #endif
 	}
 #endif
@@ -556,15 +596,31 @@ bool SVidPlayContinue()
 		return SVidLoadNextFrame(); // Skip video if the system is to slow
 	}
 
+	if (traceFrame)
+#ifdef __PS3__
+		LogInfo("PS3 FMV: frame {} presentation begin", frameNumber);
+#endif
 	if (!BlitFrame())
 		return false;
+#ifdef __PS3__
+	if (traceFrame)
+		LogInfo("PS3 FMV: frame {} presentation complete", frameNumber);
+#endif
 
 	const uint64_t now = GetTicksSmk();
 	if (now < SVidFrameEnd) {
 		SDL_Delay(static_cast<Uint32>(TimeSmkToMs(SVidFrameEnd - now))); // wait with next frame if the system is too fast
 	}
 
-	return SVidLoadNextFrame();
+	const bool hasNextFrame = SVidLoadNextFrame();
+#ifdef __PS3__
+	if (traceFrame) {
+		LogInfo("PS3 FMV: frame {} pacing complete; next frame {}",
+		    frameNumber, hasNextFrame ? "ready" : "end of movie");
+	}
+	++SVidDebugContinueCount;
+#endif
+	return hasNextFrame;
 }
 
 void SVidPlayEnd()
