@@ -69,15 +69,16 @@ if(CMAKE_SYSTEM_NAME STREQUAL "PS3")
     string(REPLACE
       [=[  if (luaD_rawrunprotected(L, f_luaopen, NULL) != LUA_OK) {]=]
       [=[  const int init_status = luaD_rawrunprotected(L, f_luaopen, NULL);
-  PS3_LUA_CORE_TRACE(init_status == LUA_OK ? "Lua core: protected f_luaopen returned LUA_OK" : "Lua core: protected f_luaopen returned error");
   if (init_status != LUA_OK) {]=]
       _ps3_lua_state_content "${_ps3_lua_state_content}")
 
-    string(REPLACE
-      [=[  const int init_status = luaD_rawrunprotected(L, f_luaopen, NULL);]=]
-      [=[  const int init_status = luaD_rawrunprotected(L, f_luaopen, NULL);
+    if(NOT _ps3_lua_state_content MATCHES "Lua core: protected f_luaopen returned LUA_OK")
+      string(REPLACE
+        [=[  const int init_status = luaD_rawrunprotected(L, f_luaopen, NULL);]=]
+        [=[  const int init_status = luaD_rawrunprotected(L, f_luaopen, NULL);
   PS3_LUA_CORE_TRACE(init_status == LUA_OK ? "Lua core: protected f_luaopen returned LUA_OK" : "Lua core: protected f_luaopen returned error");]=]
-      _ps3_lua_state_content "${_ps3_lua_state_content}")
+        _ps3_lua_state_content "${_ps3_lua_state_content}")
+    endif()
 
     # Report cleanup and the final state pointer before lua_newstate returns.
     string(REPLACE
