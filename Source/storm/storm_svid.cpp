@@ -554,15 +554,22 @@ bool SVidPlayContinue()
 	const Uint32 continueStartTicks = SDL_GetTicks();
 	const uint32_t frameNumber = Smacker_GetCurrentFrameNum(SVidHandle);
 	const uint32_t continueIndex = SVidDebugContinueCount++;
-	const bool traceFrame = continueIndex < 3 || continueIndex % 60 == 0;
+	const bool traceFrame = continueIndex < 16 || continueIndex % 60 == 0;
+	if (continueIndex < 16)
+		LogInfo("PS3 FMV TRACE: continue begin index={} frame={}", continueIndex, frameNumber);
 	const uint64_t entryTime = GetTicksSmk();
 	const int64_t deadlineOffsetMs = entryTime >= frameDeadline
 	    ? static_cast<int64_t>(TimeSmkToMs(entryTime - frameDeadline))
 	    : -static_cast<int64_t>(TimeSmkToMs(frameDeadline - entryTime));
 	const Uint32 paletteStartTicks = traceFrame ? SDL_GetTicks() : 0;
 #endif
-	if (Smacker_DidPaletteChange(SVidHandle))
+	if (continueIndex < 16)
+		LogInfo("PS3 FMV TRACE: palette check begin frame={}", frameNumber);
+	const bool paletteChanged = Smacker_DidPaletteChange(SVidHandle);
+	if (paletteChanged)
 		UpdatePalette();
+	if (continueIndex < 16)
+		LogInfo("PS3 FMV TRACE: palette check complete frame={} changed={}", frameNumber, paletteChanged);
 #ifdef __PS3__
 	const Uint32 paletteMs = traceFrame ? SDL_GetTicks() - paletteStartTicks : 0;
 #endif
@@ -595,7 +602,15 @@ bool SVidPlayContinue()
 #ifndef NOSOUND
 	if (ShouldPushAudioData()) {
 		std::int16_t *buf = SVidAudioBuffer.get();
+#ifdef __PS3__
+		if (continueIndex < 16)
+			LogInfo("PS3 FMV TRACE: audio decode begin frame={}", frameNumber);
+#endif
 		const auto len = Smacker_GetAudioData(SVidHandle, 0, buf);
+#ifdef __PS3__
+		if (continueIndex < 16)
+			LogInfo("PS3 FMV TRACE: audio decode complete frame={} bytes={}", frameNumber, len);
+#endif
 #ifdef USE_SDL3
 		if (!SDL_PutAudioStreamData(SVidAudioStream, buf, static_cast<int>(len))) {
 			LogError(LogCategory::Audio, "SDL_PutAudioStreamData (from SVidPlayContinue): {}", SDL_GetError());
@@ -605,9 +620,25 @@ bool SVidPlayContinue()
 		}
 #else
 		if (SVidAudioDepth == 16) {
+#ifdef __PS3__
+			if (continueIndex < 16)
+				LogInfo("PS3 FMV TRACE: audio queue push begin frame={} samples={}", frameNumber, len / 2);
+#endif
 			SVidAudioDecoder->PushSamples(buf, len / 2);
+#ifdef __PS3__
+			if (continueIndex < 16)
+				LogInfo("PS3 FMV TRACE: audio queue push complete frame={}", frameNumber);
+#endif
 		} else {
+#ifdef __PS3__
+			if (continueIndex < 16)
+				LogInfo("PS3 FMV TRACE: audio queue push begin frame={} bytes={}", frameNumber, len);
+#endif
 			SVidAudioDecoder->PushSamples(reinterpret_cast<const std::uint8_t *>(buf), len);
+#ifdef __PS3__
+			if (continueIndex < 16)
+				LogInfo("PS3 FMV TRACE: audio queue push complete frame={}", frameNumber);
+#endif
 		}
 #endif
 	}
@@ -636,8 +667,15 @@ bool SVidPlayContinue()
 #ifdef __PS3__
 	PS3FMVRenderStats renderStats {};
 	const Uint32 presentationStartTicks = traceFrame ? SDL_GetTicks() : 0;
-	if (!BlitFrame(traceFrame ? &renderStats : nullptr))
+	if (continueIndex < 16)
+		LogInfo("PS3 FMV TRACE: renderer begin frame={}", frameNumber);
+	if (!BlitFrame(traceFrame ? &renderStats : nullptr)) {
+		if (continueIndex < 16)
+			LogInfo("PS3 FMV TRACE: renderer failed frame={}", frameNumber);
 		return false;
+	}
+	if (continueIndex < 16)
+		LogInfo("PS3 FMV TRACE: renderer complete frame={}", frameNumber);
 	const Uint32 presentationMs = traceFrame ? SDL_GetTicks() - presentationStartTicks : 0;
 #else
 	if (!BlitFrame(false))
@@ -653,7 +691,11 @@ bool SVidPlayContinue()
 #ifdef __PS3__
 		const Uint32 waitStartTicks = traceFrame ? SDL_GetTicks() : 0;
 #endif
+		if (continueIndex < 16)
+			LogInfo("PS3 FMV TRACE: pacing delay begin frame={} ms={}", frameNumber, delayMs);
 		SDL_Delay(delayMs); // wait with next frame if the system is too fast
+		if (continueIndex < 16)
+			LogInfo("PS3 FMV TRACE: pacing delay complete frame={}", frameNumber);
 #ifdef __PS3__
 		if (traceFrame)
 			pacingWaitMs = SDL_GetTicks() - waitStartTicks;
@@ -663,7 +705,11 @@ bool SVidPlayContinue()
 #ifdef __PS3__
 	const Uint32 decodeStartTicks = traceFrame ? SDL_GetTicks() : 0;
 #endif
+	if (continueIndex < 16)
+		LogInfo("PS3 FMV TRACE: next-frame decode begin after frame={}", frameNumber);
 	const bool hasNextFrame = SVidLoadNextFrame();
+	if (continueIndex < 16)
+		LogInfo("PS3 FMV TRACE: next-frame decode complete after frame={} next={}", frameNumber, hasNextFrame);
 #ifdef __PS3__
 	if (traceFrame) {
 		const Uint32 decodeMs = SDL_GetTicks() - decodeStartTicks;

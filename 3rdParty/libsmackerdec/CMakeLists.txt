@@ -7,6 +7,24 @@ FetchContent_Declare_ExcludeFromAll(libsmackerdec
 )
 FetchContent_MakeAvailable_ExcludeFromAll(libsmackerdec)
 
+# The bundled Smacker decoder originally sized each audio track's decode
+# buffer from frame 0 only. Later frames can contain larger audio packets,
+# so scan all packet headers and allocate for the largest packet before
+# compiling the decoder.
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+execute_process(
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_LIST_DIR}/patch_smacker_audio_buffers.py"
+        "${libsmackerdec_SOURCE_DIR}/src/SmackerDecoder.cpp"
+    RESULT_VARIABLE libsmackerdec_patch_result
+    OUTPUT_VARIABLE libsmackerdec_patch_output
+    ERROR_VARIABLE libsmackerdec_patch_error
+)
+if(NOT libsmackerdec_patch_result EQUAL 0)
+  message(FATAL_ERROR
+      "Failed to apply the libsmackerdec audio-buffer safety patch: ${libsmackerdec_patch_error}")
+endif()
+message(STATUS "${libsmackerdec_patch_output}")
+
 add_library(libsmackerdec STATIC
   ${libsmackerdec_SOURCE_DIR}/src/BitReader.cpp
   ${libsmackerdec_SOURCE_DIR}/src/FileStream.cpp
