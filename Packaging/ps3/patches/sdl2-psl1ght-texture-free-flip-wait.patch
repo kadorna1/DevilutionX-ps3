@@ -1,7 +1,7 @@
 diff --git a/src/render/psl1ght/SDL_PSL1GHTrender.c b/src/render/psl1ght/SDL_PSL1GHTrender.c
 --- a/src/render/psl1ght/SDL_PSL1GHTrender.c
 +++ b/src/render/psl1ght/SDL_PSL1GHTrender.c
-@@ -806,14 +806,29 @@
+@@ -806,14 +806,35 @@
  static void
  PSL1GHT_DestroyTexture(SDL_Renderer * renderer, SDL_Texture * texture)
  {
