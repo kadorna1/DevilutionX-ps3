@@ -13,6 +13,7 @@ import json
 import logging
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -418,6 +419,9 @@ def process_archive(
             raise RuntimeError("Output MPQ path must not overwrite the original archive")
 
         shutil.copy2(archive, output_archive)
+        # Source MPQs copied from optical media can be read-only. Make only
+        # the generated copy writable so SMPQ can append the converted files.
+        output_archive.chmod(output_archive.stat().st_mode | stat.S_IWUSR)
         for _member, sidecar, compression in sidecars:
             append_sidecar(smpq, output_archive, work_root / "generated", sidecar, compression)
         for member, sidecar, _compression in sidecars:
