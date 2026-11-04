@@ -60,6 +60,44 @@ if(CMAKE_SYSTEM_NAME STREQUAL "PS3")
 
     file(WRITE "${_ps3_lua_state_source}" "${_ps3_lua_state_content}")
   endif()
+  # Upgrade cached Lua state-construction tracing. Build-tree caches can
+  # already contain the initial PS3 marker while predating the post-call
+  # checkpoints below; do not use the top-level marker as an upgrade guard.
+  file(READ "${_ps3_lua_state_source}" _ps3_lua_state_content)
+  if(NOT _ps3_lua_state_content MATCHES "Lua core: protected f_luaopen returned LUA_OK")
+    # Handle both pristine and previously instrumented call sites.
+    string(REPLACE
+      [=[  if (luaD_rawrunprotected(L, f_luaopen, NULL) != LUA_OK) {]=]
+      [=[  const int init_status = luaD_rawrunprotected(L, f_luaopen, NULL);
+  PS3_LUA_CORE_TRACE(init_status == LUA_OK ? "Lua core: protected f_luaopen returned LUA_OK" : "Lua core: protected f_luaopen returned error");
+  if (init_status != LUA_OK) {]=]
+      _ps3_lua_state_content "${_ps3_lua_state_content}")
+
+    string(REPLACE
+      [=[  const int init_status = luaD_rawrunprotected(L, f_luaopen, NULL);]=]
+      [=[  const int init_status = luaD_rawrunprotected(L, f_luaopen, NULL);
+  PS3_LUA_CORE_TRACE(init_status == LUA_OK ? "Lua core: protected f_luaopen returned LUA_OK" : "Lua core: protected f_luaopen returned error");]=]
+      _ps3_lua_state_content "${_ps3_lua_state_content}")
+
+    # Report cleanup and the final state pointer before lua_newstate returns.
+    string(REPLACE
+      [=[    L = NULL;
+  }
+  return L;]=]
+      [=[    L = NULL;
+    PS3_LUA_CORE_TRACE("Lua core: partial state cleanup complete");
+  }
+  PS3_LUA_CORE_TRACE(L != NULL ? "Lua core: lua_newstate returning valid state" : "Lua core: lua_newstate returning null state");
+  return L;]=]
+      _ps3_lua_state_content "${_ps3_lua_state_content}")
+
+    if(NOT _ps3_lua_state_content MATCHES "Lua core: protected f_luaopen returned LUA_OK" OR
+       NOT _ps3_lua_state_content MATCHES "Lua core: lua_newstate returning valid state")
+      message(FATAL_ERROR "Failed to upgrade cached PS3 Lua state-construction tracing")
+    endif()
+    file(WRITE "${_ps3_lua_state_source}" "${_ps3_lua_state_content}")
+  endif()
+
   # Trace and harden the protected-call boundary separately from f_luaopen.
   # CMake bracket arguments keep the C source fragments literal.
   set(_ps3_lua_do_source "${lua_SOURCE_DIR}/lua-5.4.7/src/ldo.c")
