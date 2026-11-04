@@ -64,7 +64,8 @@ if(CMAKE_SYSTEM_NAME STREQUAL "PS3")
   # already contain the initial PS3 marker while predating the post-call
   # checkpoints below; do not use the top-level marker as an upgrade guard.
   file(READ "${_ps3_lua_state_source}" _ps3_lua_state_content)
-  if(NOT _ps3_lua_state_content MATCHES "Lua core: protected f_luaopen returned LUA_OK")
+  if(NOT _ps3_lua_state_content MATCHES "Lua core: protected f_luaopen returned LUA_OK" OR
+     NOT _ps3_lua_state_content MATCHES "Lua core: lua_newstate returning valid state")
     # Handle both pristine and previously instrumented call sites.
     string(REPLACE
       [=[  if (luaD_rawrunprotected(L, f_luaopen, NULL) != LUA_OK) {]=]
