@@ -90,6 +90,7 @@ struct VdecMovieState {
 	bool decoderOpened = false;
 	bool sequenceStarted = false;
 	bool textureReplaced = false;
+	bool loop = false;
 
 #ifndef NOSOUND
 	std::optional<Aulib::Stream> audioStream;
@@ -381,7 +382,8 @@ u32 VdecMovieCallback(u32 handle, u32 messageType, u32 messageData, u32 argument
 			break;
 		}
 		auto *picture = reinterpret_cast<vdecPicture *>(static_cast<uintptr_t>(pictureAddress));
-		if (picture->codec_type != VDEC_CODEC_TYPE_H264 || picture->codec_specific_addr == 0) {
+		if (picture->codec_type != VDEC_CODEC_TYPE_H264 || picture->codec_specific_addr == 0
+		    || picture->status != VDEC_PICTURE_NORMAL || picture->attr != 0) {
 			SetCallbackError(state, VDEC_ERROR_PIC);
 			break;
 		}
@@ -396,7 +398,7 @@ u32 VdecMovieCallback(u32 handle, u32 messageType, u32 messageData, u32 argument
 		vdecPictureFormat format {};
 		format.format_type = VDEC_PICFMT_ARGB32;
 		format.color_matrix = VDEC_COLOR_MATRIX_BT709;
-		format.alpha = 0;
+		format.alpha = 0xFF;
 		const s32 pictureResult = vdecGetPicture(handle, &format, state->decodedFrame);
 		if (pictureResult != 0) {
 			SetCallbackError(state, pictureResult);
@@ -580,25 +582,58 @@ void RestoreGameTexture(VdecMovieState &state)
 	state.textureReplaced = false;
 }
 
+bool EndVdecSequenceAndWait(VdecMovieState &state)
+{
+	SDL_LockMutex(state.mutex);
+	state.sequenceDone = false;
+	SDL_UnlockMutex(state.mutex);
+	const s32 endResult = vdecEndSequence(state.decoderHandle);
+	if (endResult != 0) {
+		LogWarn("PS3 VDEC: vdecEndSequence returned 0x{:08x}", static_cast<unsigned int>(endResult));
+		return false;
+	}
+	const Uint32 start = SDL_GetTicks();
+	SDL_LockMutex(state.mutex);
+	while (!state.sequenceDone && SDL_GetTicks() - start < VdecTimeoutMs) {
+		const Uint32 elapsed = SDL_GetTicks() - start;
+		const Uint32 remaining = VdecTimeoutMs - elapsed;
+		if (SDL_CondWaitTimeout(state.condition, state.mutex, remaining) != 0)
+			break;
+	}
+	const bool complete = state.sequenceDone;
+	SDL_UnlockMutex(state.mutex);
+	if (!complete)
+		LogWarn("PS3 VDEC: sequence-end callback timed out");
+	return complete;
+}
+
+bool RestartVdecSequence(VdecMovieState &state)
+{
+	if (!EndVdecSequenceAndWait(state))
+		return false;
+	const s32 result = vdecStartSequence(state.decoderHandle);
+	if (result != 0) {
+		LogError("PS3 VDEC: vdecStartSequence during loop failed: 0x{:08x}", static_cast<unsigned int>(result));
+		return false;
+	}
+	state.sequenceStarted = true;
+	state.frameIndex = 0;
+	state.startTicks = SDL_GetTicks();
+	state.codedWidth = 0;
+	state.codedHeight = 0;
+#ifndef NOSOUND
+	if (state.audioDecoder != nullptr)
+		state.audioDecoder->DiscardPendingSamples();
+#endif
+	LogInfo("PS3 VDEC: restarted looping movie sequence");
+	return true;
+}
+
 void CloseVdecDecoder(VdecMovieState &state)
 {
 	if (state.decoderOpened) {
 		if (state.sequenceStarted) {
-			SDL_LockMutex(state.mutex);
-			state.sequenceDone = false;
-			SDL_UnlockMutex(state.mutex);
-			const s32 endResult = vdecEndSequence(state.decoderHandle);
-			if (endResult == 0) {
-				const Uint32 start = SDL_GetTicks();
-				SDL_LockMutex(state.mutex);
-				while (!state.sequenceDone && SDL_GetTicks() - start < VdecTimeoutMs) {
-					const Uint32 elapsed = SDL_GetTicks() - start;
-					const Uint32 remaining = VdecTimeoutMs - elapsed;
-					if (SDL_CondWaitTimeout(state.condition, state.mutex, remaining) != 0)
-						break;
-				}
-				SDL_UnlockMutex(state.mutex);
-			}
+			EndVdecSequenceAndWait(state);
 			state.sequenceStarted = false;
 		}
 		const s32 closeResult = vdecClose(state.decoderHandle);
@@ -660,6 +695,10 @@ bool ReplaceMovieTexture(VdecMovieState &state)
 	texture.swap(replacementTexture);
 	replacementTexture.reset();
 	state.textureReplaced = true;
+	if (SDL_SetTextureBlendMode(texture.get(), SDL_BLENDMODE_NONE) < 0) {
+		LogError("PS3 VDEC: disabling movie texture blending failed: {}", SDL_GetError());
+		return false;
+	}
 	if (SDL_RenderSetLogicalSize(renderer, state.metadata.width, state.metadata.height) <= -1) {
 		LogError("PS3 VDEC: SDL_RenderSetLogicalSize failed: {}", SDL_GetError());
 		return false;
@@ -706,6 +745,7 @@ bool PS3VdecMovieBegin(const char *filename, int flags)
 		PS3VdecMovieEnd();
 
 	auto state = std::make_unique<VdecMovieState>();
+	state->loop = (flags & 0x40000) != 0;
 	if (!LoadMovieAssets(filename, *state)) {
 		DestroyVdecMovieState(*state, false);
 		return false;
@@ -779,9 +819,10 @@ bool PS3VdecMovieContinue()
 		return false;
 	}
 	++state.frameIndex;
-
-	if (state.frameIndex >= state.accessUnits.size())
+	const bool reachedEnd = state.frameIndex >= state.accessUnits.size();
+	if (reachedEnd && !state.loop)
 		return false;
+
 	const uint64_t frameElapsedMs = static_cast<uint64_t>(state.frameIndex) * 1000ULL
 	    * static_cast<uint64_t>(state.metadata.fpsDenominator)
 	    / static_cast<uint64_t>(state.metadata.fpsNumerator);
@@ -790,6 +831,8 @@ bool PS3VdecMovieContinue()
 		const Uint64 delay = frameElapsedMs - elapsed;
 		SDL_Delay(static_cast<Uint32>(std::min<Uint64>(delay, std::numeric_limits<Uint32>::max())));
 	}
+	if (reachedEnd && !RestartVdecSequence(state))
+		return false;
 	return true;
 }
 
