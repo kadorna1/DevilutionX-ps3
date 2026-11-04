@@ -105,7 +105,9 @@ void play_movie(const char *pszMovie, bool userCanClose)
 					break;
 				}
 			}
-			if (!SVidPlayContinue())
+			// A skip or quit event can clear movie_playing inside FetchMessage().
+			// Do not decode, queue audio for, or present one extra frame afterward.
+			if (!movie_playing || !SVidPlayContinue())
 				break;
 		}
 		SVidPlayEnd();
