@@ -80,6 +80,9 @@ if ! grep -Fq "PSL1GHT texture create begin" "$SDL2_SOURCE/$SDL2_RENDERER"; then
 fi
 grep -Fq "PSL1GHT texture create begin" "$SDL2_SOURCE/$SDL2_RENDERER"
 grep -Fq "PSL1GHT texture allocation failed" "$SDL2_SOURCE/$SDL2_RENDERER"
+grep -Fq "SDL_OutOfMemory();" "$SDL2_SOURCE/$SDL2_RENDERER"
+grep -Fq "rsxFree(pixels);" "$SDL2_SOURCE/$SDL2_RENDERER"
+echo "Validated PSL1GHT RSX texture allocation and cleanup guards"
 
 actual_joystick_blob="$(git -C "$SDL2_SOURCE" rev-parse "HEAD:$SDL2_JOYSTICK")"
 if [[ "$actual_joystick_blob" != "$SDL2_JOYSTICK_BLOB" ]]; then
