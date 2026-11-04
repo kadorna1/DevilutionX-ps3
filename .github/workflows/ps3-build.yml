@@ -92,6 +92,11 @@ jobs:
           python3 Packaging/ps3/incremental.py prepare build-ps3
           ccache --show-stats
 
+      - name: Build SDL2 with PPU-side RSX flip synchronization
+        run: |
+          set -euo pipefail
+          bash Packaging/ps3/build_sdl2_psl1ght.sh build-ps3
+
       - name: Configure and compile
         run: |
           set -euo pipefail
@@ -176,6 +181,7 @@ jobs:
             build-ps3/ps3-sdk-info.txt
             build-ps3/ppu-elf-info.txt
             build-ps3/ccache-stats.txt
+            build-ps3/sdl2-psl1ght-flip-fix-info.txt
             build-ps3/lua-protected-call-source.txt
             build-ps3/lua-setjmp-layout-source.txt
             build-ps3/lua-state-construction-source.txt
