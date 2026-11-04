@@ -422,12 +422,13 @@ extern void PS3LuaRawBootLogStatus(int status, int callbackReturned);
     string(REPLACE
       [=[    PS3_LUA_CORE_TRACE_STATUS(lj.status, -6); /* PS3 Lua status checkpoint at callback entry */]=]
       [=[    ps3_status_after_setjmp = lj.status;
+    PS3_LUA_CORE_TRACE_STATUS((int)sizeof(jmp_buf), -10); /* effective Newlib jmp_buf size */
     PS3_LUA_CORE_TRACE_STATUS(ps3_status_before_setjmp, -8); /* status before setjmp */
     PS3_LUA_CORE_TRACE_STATUS(ps3_status_after_setjmp, -6); /* PS3 Lua status checkpoint at callback entry; immediately after setjmp */]=]
       _ps3_lua_do_content "${_ps3_lua_do_content}")
     if(NOT _ps3_lua_do_content MATCHES "ps3_status_before_setjmp = lj.status" OR
        NOT _ps3_lua_do_content MATCHES "ps3_status_after_setjmp = lj.status")
-      message(FATAL_ERROR "Failed to apply PS3 Lua post-setjmp status correction")
+      message(FATAL_ERROR "Failed to apply PS3 Lua post-setjmp status diagnostics")
     endif()
   endif()
 
