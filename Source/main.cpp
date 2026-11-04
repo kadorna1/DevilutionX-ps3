@@ -230,6 +230,7 @@ extern "C" int main(int argc, char **argv)
 	SDL_LogSetOutputFunction(PS3LogOutput, nullptr);
 	SDL_LogSetAllPriority(SDL_LOG_PRIORITY_VERBOSE);
 	PS3WriteBootLog("main() entered");
+	PS3WriteBootLog("diagnostic build: ps3-jmpbuf-altivec-fix-v1");
 #endif
 #ifdef __SWITCH__
 	switch_romfs_init();
