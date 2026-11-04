@@ -277,12 +277,12 @@ def encode_movie(
                 ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
                 "-i", str(source),
                 "-map", "0:a:0", "-vn", "-sn", "-dn",
-                "-c:a", "pcm_s16le", "-ar", str(sample_rate), "-ac", str(channels),
-                "-f", "wav", str(audio_out),
+                "-c:a", "pcm_s16be", "-ar", str(sample_rate), "-ac", str(channels),
+                "-f", "s16be", str(audio_out),
             ],
             check=True,
         )
-        if not audio_out.is_file() or audio_out.stat().st_size <= 44:
+        if not audio_out.is_file() or audio_out.stat().st_size == 0:
             raise RuntimeError(f"FFmpeg produced no PCM audio output for {source}")
         audio_rate, audio_channels = sample_rate, channels
     else:
@@ -312,7 +312,8 @@ def write_metadata(path: Path, info: MovieInfo) -> None:
         f"audio_rate={info.audio_rate}",
         f"audio_channels={info.audio_channels}",
         f"video={info.sidecar_member('h264')}",
-        f"audio={info.sidecar_member('wav') if info.audio_rate else 'none'}",
+        f"audio={info.sidecar_member('pcm') if info.audio_rate else 'none'}",
+        "audio_format=s16be",
         "pixel_format=yuv420p",
         "bitstream=annexb-aud",
     ]
@@ -391,7 +392,7 @@ def process_archive(
 
             generated_root = work_root / "generated"
             video_rel = PurePosixPath(info.sidecar_member("h264"))
-            audio_rel = PurePosixPath(info.sidecar_member("wav"))
+            audio_rel = PurePosixPath(info.sidecar_member("pcm"))
             meta_rel = PurePosixPath(info.sidecar_member("meta"))
             video_out = generated_root.joinpath(*video_rel.parts)
             audio_out = generated_root.joinpath(*audio_rel.parts) if info.audio_rate else None
