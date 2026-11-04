@@ -30,6 +30,7 @@ SDL2_JOYSTICK="src/joystick/psl1ght/SDL_sysjoystick.c"
 SDL2_JOYSTICK_BLOB="f7b2d2a8239c2052653f95ce155e656e9bdc431e"
 SDL2_SOURCE="$BUILD_DIR/_deps/sdl2-psl1ght"
 PATCH_FILE="$ROOT/Packaging/ps3/patches/sdl2-psl1ght-ppu-flip-wait.patch"
+TEXTURE_FREE_PATCH_FILE="$ROOT/Packaging/ps3/patches/sdl2-psl1ght-texture-free-flip-wait.patch"
 JOYSTICK_PATCH_FILE="$ROOT/Packaging/ps3/patches/sdl2-psl1ght-controller-input.patch"
 
 mkdir -p "$(dirname "$SDL2_SOURCE")"
@@ -54,6 +55,19 @@ fi
 grep -Fq "Wait for the previous flip from the PPU" "$SDL2_SOURCE/$SDL2_RENDERER"
 if grep -Fq "gcmSetWaitFlip(data->context)" "$SDL2_SOURCE/$SDL2_RENDERER"; then
   echo "error: SDL2 renderer still queues gcmSetWaitFlip" >&2
+  exit 1
+fi
+
+# SDL_RenderPresent submits the last flip and returns while it may still be in
+# flight. Wait before DestroyTexture releases RSX source memory, independently
+# of whether the previous flip patch was already present in the restored cache.
+if ! grep -Fq "Wait for pending RSX flip before freeing texture memory" "$SDL2_SOURCE/$SDL2_RENDERER"; then
+  git -C "$SDL2_SOURCE" apply --check "$TEXTURE_FREE_PATCH_FILE"
+  git -C "$SDL2_SOURCE" apply "$TEXTURE_FREE_PATCH_FILE"
+fi
+grep -Fq "Wait for pending RSX flip before freeing texture memory" "$SDL2_SOURCE/$SDL2_RENDERER"
+if grep -Fq "TODO: Wait for the DMA transfer to complete" "$SDL2_SOURCE/$SDL2_RENDERER"; then
+  echo "error: SDL2 texture destruction still has an unsatisfied DMA wait TODO" >&2
   exit 1
 fi
 
@@ -95,7 +109,7 @@ test -s "$SDL2_ARCHIVE" || {
   echo "SDL2 source: $SDL2_REPO ($SDL2_BRANCH)"
   echo "SDL2 source commit: $(git -C "$SDL2_SOURCE" rev-parse HEAD)"
   echo "SDL2 renderer source blob: $actual_blob"
-  echo "Renderer patch: PPU-side flip polling; no gcmSetWaitFlip command"
+  echo "Renderer patches: PPU-side flip polling and wait-before-free for RSX texture memory"
   echo "PS3 joystick source blob: $actual_joystick_blob"
   echo "Controller patch: initialize pad state and center the four analog axes"
   echo "Controller mapping: DualShock 3 4-axis / 16-button ioPad layout"

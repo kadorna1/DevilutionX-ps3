@@ -287,10 +287,28 @@ void UpdateOutputSurface()
 
 void RenderPresent()
 {
+#ifdef __PS3__
+	static unsigned int ps3RenderPresentTraceCount = 0;
+	const bool tracePS3 = ps3RenderPresentTraceCount < 16;
+	if (tracePS3) {
+		++ps3RenderPresentTraceCount;
+		LogInfo("PS3 RENDER: RenderPresent entered");
+	}
+#endif
 	if (HeadlessMode)
 		return;
 
 	SDL_Surface *surface = GetOutputSurface();
+#ifdef __PS3__
+	if (tracePS3) {
+		LogInfo("PS3 RENDER: state active={} renderer_valid={} output_valid={}",
+		    gbActive, renderer != nullptr, surface != nullptr);
+		if (surface != nullptr) {
+			LogInfo("PS3 RENDER: output surface {}x{} pitch={} pixels_valid={}",
+			    surface->w, surface->h, surface->pitch, surface->pixels != nullptr);
+		}
+	}
+#endif
 
 	if (!gbActive) {
 #ifdef __EMSCRIPTEN__
@@ -310,16 +328,46 @@ void RenderPresent()
 		if (!SDL_UpdateTexture(texture.get(), nullptr, surface->pixels, surface->pitch)) ErrSdl();
 		if (!SDL_RenderTexture(renderer, texture.get(), nullptr, nullptr)) ErrSdl();
 #else
+#ifdef __PS3__
+		if (tracePS3) LogInfo("PS3 RENDER: SDL_SetRenderDrawColor begin texture_valid={}", texture != nullptr);
+#endif
 		if (SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255) <= -1) ErrSdl();
+#ifdef __PS3__
+		if (tracePS3) LogInfo("PS3 RENDER: SDL_SetRenderDrawColor complete");
+		if (tracePS3) LogInfo("PS3 RENDER: SDL_RenderClear begin");
+#endif
 		if (SDL_RenderClear(renderer) <= -1) ErrSdl();
+#ifdef __PS3__
+		if (tracePS3) LogInfo("PS3 RENDER: SDL_RenderClear complete");
+		if (tracePS3) LogInfo("PS3 RENDER: SDL_UpdateTexture begin");
+#endif
 		if (SDL_UpdateTexture(texture.get(), nullptr, surface->pixels, surface->pitch) <= -1) ErrSdl();
+#ifdef __PS3__
+		if (tracePS3) LogInfo("PS3 RENDER: SDL_UpdateTexture complete");
+		if (tracePS3) LogInfo("PS3 RENDER: SDL_RenderCopy begin");
+#endif
 		if (SDL_RenderCopy(renderer, texture.get(), nullptr, nullptr) <= -1) ErrSdl();
+#ifdef __PS3__
+		if (tracePS3) LogInfo("PS3 RENDER: SDL_RenderCopy complete");
+#endif
 #endif
 
 		if (ControlMode == ControlTypes::VirtualGamepad) {
+#ifdef __PS3__
+			if (tracePS3) LogInfo("PS3 RENDER: RenderVirtualGamepad begin");
+#endif
 			RenderVirtualGamepad(renderer);
+#ifdef __PS3__
+			if (tracePS3) LogInfo("PS3 RENDER: RenderVirtualGamepad complete");
+#endif
 		}
+#ifdef __PS3__
+		if (tracePS3) LogInfo("PS3 RENDER: SDL_RenderPresent begin");
+#endif
 		SDL_RenderPresent(renderer);
+#ifdef __PS3__
+		if (tracePS3) LogInfo("PS3 RENDER: SDL_RenderPresent complete");
+#endif
 
 #ifdef __EMSCRIPTEN__
 		// TODO: Refactor to use emscripten_set_main_loop or requestAnimationFrame instead.
@@ -331,6 +379,9 @@ void RenderPresent()
 			LimitFrameRate();
 		}
 	} else {
+#ifdef __PS3__
+		if (tracePS3) LogInfo("PS3 RENDER: renderer is null; using window-surface presentation");
+#endif
 		if (ControlMode == ControlTypes::VirtualGamepad) {
 			RenderVirtualGamepad(surface);
 		}
@@ -350,7 +401,6 @@ void RenderPresent()
 	LimitFrameRate();
 #endif
 }
-
 
 #ifdef __PS3__
 bool RenderIndexedVideoFrame(const Uint8 *pixels, int width, int height, const SDL_Color *palette, PS3FMVRenderStats *stats)

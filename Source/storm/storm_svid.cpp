@@ -717,9 +717,13 @@ void SVidPlayEnd()
 #ifdef __PS3__
 		LogInfo("PS3 FMV END: restore game texture begin {}x{}", gnScreenWidth, gnScreenHeight);
 #endif
+#ifdef __PS3__
+		const Uint32 restoreTextureStartTicks = SDL_GetTicks();
+#endif
 		texture = SDLWrap::CreateTexture(renderer, DEVILUTIONX_DISPLAY_TEXTURE_FORMAT, SDL_TEXTUREACCESS_STREAMING, gnScreenWidth, gnScreenHeight);
 #ifdef __PS3__
-		LogInfo("PS3 FMV END: restore game texture complete valid={}", texture != nullptr);
+		LogInfo("PS3 FMV END: restore game texture complete valid={} elapsed_ms={}",
+		    texture != nullptr, SDL_GetTicks() - restoreTextureStartTicks);
 #endif
 		if (
 #ifdef USE_SDL3

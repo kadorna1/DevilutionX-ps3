@@ -349,6 +349,10 @@ ControllerButton TranslateTo(GamepadLayout layout, ControllerButton button)
 
 bool SkipsMovie(ControllerButtonEvent ctrlEvent)
 {
+	// Only a button-down edge skips a movie. Ignore the release event so it
+	// cannot leak into the next movie in a consecutive splash sequence.
+	if (ctrlEvent.up)
+		return false;
 	return IsAnyOf(ctrlEvent.button,
 	    ControllerButton_BUTTON_A,
 	    ControllerButton_BUTTON_B,

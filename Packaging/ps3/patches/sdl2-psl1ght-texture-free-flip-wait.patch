@@ -1,0 +1,28 @@
+diff --git a/src/render/psl1ght/SDL_PSL1GHTrender.c b/src/render/psl1ght/SDL_PSL1GHTrender.c
+--- a/src/render/psl1ght/SDL_PSL1GHTrender.c
++++ b/src/render/psl1ght/SDL_PSL1GHTrender.c
+@@ -806,14 +806,23 @@
+ static void
+ PSL1GHT_DestroyTexture(SDL_Renderer * renderer, SDL_Texture * texture)
+ {
++    PSL1GHT_RenderData *data = (PSL1GHT_RenderData *) renderer->driverdata;
+     SDL_Surface *surface = (SDL_Surface *) texture->driverdata;
+
+     if (!surface)
+     {
+         return;
+     }
+
+-    // TODO: Wait for the DMA transfer to complete
++    /*
++     * Wait for pending RSX flip before freeing texture memory. The
++     * PPU-side wait in RenderPresent() completes the previous display flip,
++     * which also ensures the last RSX blit no longer reads this texture.
++     */
++    if (data && !data->first_fb) {
++        waitFlip();
++    }
++
+     rsxFree(surface->pixels);
+     SDL_FreeSurface(surface);
+ }
