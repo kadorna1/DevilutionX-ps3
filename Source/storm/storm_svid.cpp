@@ -459,10 +459,26 @@ bool SVidPlayBegin(const char *filename, int flags)
 	if (renderer != nullptr) {
 		const int renderWidth = static_cast<int>(SVidWidth);
 		const int renderHeight = static_cast<int>(SVidHeight);
-		texture = SDLWrap::CreateTexture(renderer, DEVILUTIONX_DISPLAY_TEXTURE_FORMAT, SDL_TEXTUREACCESS_STREAMING, renderWidth, renderHeight);
 #ifdef __PS3__
-		LogInfo("PS3 FMV: streaming texture {}x{} {}",
-		    renderWidth, renderHeight, texture != nullptr ? "created" : "creation failed");
+		LogInfo("PS3 FMV: streaming texture create begin {}x{} format=0x{:08x}",
+		    renderWidth, renderHeight, DEVILUTIONX_DISPLAY_TEXTURE_FORMAT);
+		SDLTextureUniquePtr replacementTexture {
+		    SDL_CreateTexture(renderer, DEVILUTIONX_DISPLAY_TEXTURE_FORMAT,
+		        SDL_TEXTUREACCESS_STREAMING, renderWidth, renderHeight)
+		};
+		if (replacementTexture == nullptr) {
+			LogError("PS3 FMV: streaming texture creation failed: {}", SDL_GetError());
+			ErrSdl();
+			return false;
+		}
+		LogInfo("PS3 FMV: streaming texture allocation returned valid texture");
+		LogInfo("PS3 FMV: replacing current renderer texture begin old_valid={}", texture != nullptr);
+		texture.swap(replacementTexture);
+		LogInfo("PS3 FMV: current renderer texture replaced; old texture cleanup begin");
+		replacementTexture.reset();
+		LogInfo("PS3 FMV: old texture cleanup complete");
+#else
+		texture = SDLWrap::CreateTexture(renderer, DEVILUTIONX_DISPLAY_TEXTURE_FORMAT, SDL_TEXTUREACCESS_STREAMING, renderWidth, renderHeight);
 #endif
 		if (
 #ifdef USE_SDL3
