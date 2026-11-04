@@ -1,0 +1,71 @@
+diff --git a/src/render/psl1ght/SDL_PSL1GHTrender.c b/src/render/psl1ght/SDL_PSL1GHTrender.c
+--- a/src/render/psl1ght/SDL_PSL1GHTrender.c
++++ b/src/render/psl1ght/SDL_PSL1GHTrender.c
+@@
+ static int
+ PSL1GHT_CreateTexture(SDL_Renderer * renderer, SDL_Texture * texture)
+ {
+     int bpp;
+     int pitch;
+     void *pixels;
+     Uint32 Rmask, Gmask, Bmask, Amask;
+
++    SDL_Log("PSL1GHT texture create begin: %dx%d format=0x%08x",
++        texture->w, texture->h, texture->format);
+     if (!SDL_PixelFormatEnumToMasks
+         (texture->format, &bpp, &Rmask, &Gmask, &Bmask, &Amask)) {
+         SDL_SetError("Unknown texture format");
++        SDL_Log("PSL1GHT texture create failed: unsupported pixel format");
+         return -1;
+     }
+
+     // Allocate GFX memory for textures
+     pitch = texture->w * SDL_BYTESPERPIXEL(texture->format);
+-    pixels = rsxMemalign(64, texture->h * pitch);
++    const size_t allocationSize = (size_t)texture->h * (size_t)pitch;
++    SDL_Log("PSL1GHT texture create: RSX allocation begin bytes=%u pitch=%d",
++        (unsigned int)allocationSize, pitch);
++    pixels = rsxMemalign(64, allocationSize);
++    if (!pixels) {
++        SDL_Log("PSL1GHT texture allocation failed: rsxMemalign returned NULL");
++        SDL_OutOfMemory();
++        return -1;
++    }
++    SDL_Log("PSL1GHT texture create: RSX allocation complete ptr=%p", pixels);
+
+     texture->driverdata =
+         SDL_CreateRGBSurfaceFrom(pixels, texture->w, texture->h, bpp, pitch,
+                             Rmask, Gmask, Bmask, Amask);
++    if (!texture->driverdata) {
++        SDL_Log("PSL1GHT texture create failed: SDL_CreateRGBSurfaceFrom: %s",
++            SDL_GetError());
++        rsxFree(pixels);
++        return -1;
++    }
++    SDL_Log("PSL1GHT texture create: surface complete ptr=%p", texture->driverdata);
+
+     SDL_SetSurfaceColorMod(texture->driverdata, texture->r, texture->g,
+                            texture->b);
+     SDL_SetSurfaceAlphaMod(texture->driverdata, texture->a);
+     SDL_SetSurfaceBlendMode(texture->driverdata, texture->blendMode);
+
+-    if (!texture->driverdata) {
+-        return -1;
+-    }
++    SDL_Log("PSL1GHT texture create complete: %dx%d bytes=%u",
++        texture->w, texture->h, (unsigned int)allocationSize);
+     return 0;
+ }
+@@
+     if (data && !data->first_fb) {
++        SDL_Log("PSL1GHT texture destroy: pending flip wait begin");
+         waitFlip();
++        SDL_Log("PSL1GHT texture destroy: pending flip wait complete");
+     }
+
++    SDL_Log("PSL1GHT texture destroy: RSX free begin ptr=%p", surface->pixels);
+     rsxFree(surface->pixels);
++    SDL_Log("PSL1GHT texture destroy: RSX free complete");
+     SDL_FreeSurface(surface);
++    SDL_Log("PSL1GHT texture destroy complete");
+ }
