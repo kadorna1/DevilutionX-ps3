@@ -51,6 +51,9 @@ jobs:
           test -x "$PS3DEV/ppu/bin/ppu-gcc"
           test -x "$PS3DEV/ppu/bin/ppu-g++"
           test -x "$PS3DEV/ppu/bin/ppu-objcopy"
+          test -s "$PS3DEV/ppu/lib/libvdec.a"
+          test -s "$PS3DEV/ppu/lib/libsysmodule.a"
+          python3 -m py_compile Packaging/ps3/prepare_ps3_fmv_mpqs.py
           command -v sdl2-config
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           ppu-gcc --version | head -n 1
