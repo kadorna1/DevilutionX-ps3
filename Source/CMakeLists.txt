@@ -151,6 +151,7 @@ set(libdevilutionx_SRCS
 
   storm/storm_net.cpp
   storm/storm_svid.cpp
+  storm/ps3_vdec.cpp
 
   tables/misdat.cpp
   tables/townerdat.cpp
