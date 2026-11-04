@@ -317,6 +317,44 @@ extern void PS3LuaRawBootLogStatus(int status, int callbackReturned);
   return lj.status;]=]
     _ps3_lua_do_content "${_ps3_lua_do_content}")
 
+  # Capture the initialized status before setjmp, then snapshot the value
+  # immediately after setjmp returns. On PPU, the observed status can be
+  # clobbered across the jump-buffer setup even though the callback runs.
+  # Restore LUA_OK only on the initial (setjmp == 0) path; a real longjmp
+  # skips this block and preserves the error code written by luaD_throw.
+  if(NOT _ps3_lua_do_content MATCHES "ps3_status_before_setjmp")
+    string(REPLACE
+      [=[  struct lua_longjmp lj;]=]
+      [=[  struct lua_longjmp lj;
+#ifdef __PS3__
+  volatile int ps3_status_before_setjmp = LUA_OK;
+  volatile int ps3_status_after_setjmp = LUA_OK;
+#endif]=]
+      _ps3_lua_do_content "${_ps3_lua_do_content}")
+
+    string(REPLACE
+      [=[  lj.status = LUA_OK;]=]
+      [=[  lj.status = LUA_OK;
+#ifdef __PS3__
+  ps3_status_before_setjmp = lj.status;
+#endif]=]
+      _ps3_lua_do_content "${_ps3_lua_do_content}")
+
+    string(REPLACE
+      [=[    PS3_LUA_CORE_TRACE_STATUS(lj.status, -6); /* PS3 Lua status checkpoint at callback entry */]=]
+      [=[    ps3_status_after_setjmp = lj.status;
+    PS3_LUA_CORE_TRACE_STATUS(ps3_status_before_setjmp, -8); /* status before setjmp */
+    PS3_LUA_CORE_TRACE_STATUS(ps3_status_after_setjmp, -6); /* status immediately after setjmp */
+    lj.status = LUA_OK; /* re-establish success status after PPU setjmp */
+    PS3_LUA_CORE_TRACE_STATUS(lj.status, -9); /* status after normalization */]=]
+      _ps3_lua_do_content "${_ps3_lua_do_content}")
+    if(NOT _ps3_lua_do_content MATCHES "ps3_status_before_setjmp = lj.status" OR
+       NOT _ps3_lua_do_content MATCHES "ps3_status_after_setjmp = lj.status" OR
+       NOT _ps3_lua_do_content MATCHES "re-establish success status after PPU setjmp")
+      message(FATAL_ERROR "Failed to apply PS3 Lua post-setjmp status correction")
+    endif()
+  endif()
+
   # Record every explicit Lua throw that writes to the active protected call.
   if(NOT _ps3_lua_do_content MATCHES "PS3_LUA_CORE_TRACE_STATUS\\(errcode, -1\\)")
     string(REPLACE
