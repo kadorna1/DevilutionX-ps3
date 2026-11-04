@@ -1,19 +1,10 @@
-# Find the PS3 SDL2 library installed by the ps3dev-sdl2 environment.
+# Find the PS3 SDL2 static library installed by the ps3dev-sdl2 environment.
 #
-# Prefer SDL2's exported CMake package. Older PSL1GHT SDL2 builds only install
-# sdl2-config, so fall back to its flags and expose a compatible SDL2::SDL2
-# interface target for DevilutionX's dependency setup.
-
-find_package(SDL2 QUIET CONFIG NO_MODULE)
-
-if(TARGET SDL2::SDL2-static AND NOT TARGET SDL2::SDL2)
-  add_library(SDL2::SDL2 ALIAS SDL2::SDL2-static)
-endif()
-
-if(TARGET SDL2::SDL2 OR TARGET SDL2::SDL2-static)
-  set(SDL2_FOUND TRUE)
-  return()
-endif()
+# SDL_PSL1GHT also installs an SDL2 CMake config that declares SDL2::SDL2 as
+# SHARED IMPORTED. CMake coerces that target to STATIC on PS3 but retains the
+# .so IMPORTED_LOCATION, which makes Ninja require a nonexistent libSDL2.so.
+# Do not load that config on PS3. Use sdl2-config --static-libs and expose an
+# interface target so the linker resolves the actual static archive instead.
 
 find_program(SDL2_CONFIG_EXECUTABLE NAMES sdl2-config)
 
@@ -40,16 +31,22 @@ execute_process(
   OUTPUT_STRIP_TRAILING_WHITESPACE
 )
 if(NOT _sdl2_libs_result EQUAL 0 OR "${_sdl2_libs}" STREQUAL "")
-  execute_process(
-    COMMAND "${SDL2_CONFIG_EXECUTABLE}" --libs
-    RESULT_VARIABLE _sdl2_libs_result
-    OUTPUT_VARIABLE _sdl2_libs
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-  )
+  message(FATAL_ERROR "PS3 SDL2 must provide sdl2-config --static-libs")
 endif()
-if(NOT _sdl2_libs_result EQUAL 0)
-  set(SDL2_FOUND FALSE)
-  return()
+
+execute_process(
+  COMMAND "${SDL2_CONFIG_EXECUTABLE}" --prefix
+  RESULT_VARIABLE _sdl2_prefix_result
+  OUTPUT_VARIABLE _sdl2_prefix
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+if(NOT _sdl2_prefix_result EQUAL 0 OR "${_sdl2_prefix}" STREQUAL "")
+  message(FATAL_ERROR "Could not determine the PS3 SDL2 installation prefix")
+endif()
+
+set(_sdl2_static_archive "${_sdl2_prefix}/lib/libSDL2.a")
+if(NOT EXISTS "${_sdl2_static_archive}")
+  message(FATAL_ERROR "PS3 SDL2 static archive not found: ${_sdl2_static_archive}")
 endif()
 
 separate_arguments(_sdl2_cflags_list NATIVE_COMMAND "${_sdl2_cflags}")
@@ -72,6 +69,11 @@ if(NOT SDL2_INCLUDE_DIRS)
   set(SDL2_FOUND FALSE)
   return()
 endif()
+
+# Replace any generic -lSDL2 token with the archive we built in CI. Other
+# static link flags from sdl2-config (e.g. -lm, -lrt, -llv2) remain intact.
+list(REMOVE_ITEM _sdl2_libs_list "-lSDL2")
+list(PREPEND _sdl2_libs_list "${_sdl2_static_archive}")
 
 if(NOT TARGET SDL2::SDL2)
   add_library(SDL2::SDL2 INTERFACE IMPORTED)
