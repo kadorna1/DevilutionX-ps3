@@ -544,8 +544,6 @@ bool SVidPlayContinue()
 	    ? static_cast<int64_t>(TimeSmkToMs(entryTime - frameDeadline))
 	    : -static_cast<int64_t>(TimeSmkToMs(frameDeadline - entryTime));
 	const Uint32 paletteStartTicks = traceFrame ? SDL_GetTicks() : 0;
-#else
-	const bool traceFrame = false;
 #endif
 	if (Smacker_DidPaletteChange(SVidHandle))
 		UpdatePalette();
@@ -631,10 +629,14 @@ bool SVidPlayContinue()
 #endif
 
 	const uint64_t now = GetTicksSmk();
+#ifdef __PS3__
 	Uint32 pacingWaitMs = 0;
+#endif
 	if (now < frameDeadline) {
 		const Uint32 delayMs = static_cast<Uint32>(TimeSmkToMs(frameDeadline - now));
+#ifdef __PS3__
 		const Uint32 waitStartTicks = traceFrame ? SDL_GetTicks() : 0;
+#endif
 		SDL_Delay(delayMs); // wait with next frame if the system is too fast
 #ifdef __PS3__
 		if (traceFrame)
