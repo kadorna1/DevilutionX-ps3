@@ -605,11 +605,15 @@ bool SVidPlayContinue()
 #ifdef __PS3__
 		const Uint32 decodeStartTicks = traceFrame ? SDL_GetTicks() : 0;
 #endif
+#ifdef __PS3__
 		if (traceFrame)
 			LogInfo("PS3 FMV TRACE: late-frame decode begin frame={} path=before-audio", frameNumber);
+#endif
 		const bool hasNextFrame = SVidLoadNextFrame();
+#ifdef __PS3__
 		if (traceFrame)
 			LogInfo("PS3 FMV TRACE: late-frame decode complete frame={} path=before-audio next={}", frameNumber, hasNextFrame);
+#endif
 #ifdef __PS3__
 		if (traceFrame) {
 			const Uint32 decodeMs = SDL_GetTicks() - decodeStartTicks;
@@ -677,11 +681,15 @@ bool SVidPlayContinue()
 		const uint64_t lateByMs = TimeSmkToMs(GetTicksSmk() - frameDeadline);
 		const Uint32 decodeStartTicks = traceFrame ? SDL_GetTicks() : 0;
 #endif
+#ifdef __PS3__
 		if (traceFrame)
 			LogInfo("PS3 FMV TRACE: late-frame decode begin frame={} path=after-audio", frameNumber);
+#endif
 		const bool hasNextFrame = SVidLoadNextFrame();
+#ifdef __PS3__
 		if (traceFrame)
 			LogInfo("PS3 FMV TRACE: late-frame decode complete frame={} path=after-audio next={}", frameNumber, hasNextFrame);
+#endif
 #ifdef __PS3__
 		if (traceFrame) {
 			const Uint32 decodeMs = SDL_GetTicks() - decodeStartTicks;
