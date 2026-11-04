@@ -215,7 +215,7 @@ replace_once(
 )
 
 replace_once(
-    """    deprintf (1, "\\tFinished\\n");
+    """    deprintf (1,  "\\tFinished\\n");
 
     renderer->WindowEvent = PSL1GHT_WindowEvent;""",
     """    deprintf (1, "\\tFinished\\n");
@@ -251,7 +251,7 @@ replace_once(
 # The backend must fail explicitly for operations that previously returned
 # success while doing no work.
 replace_once(
-    """static int
+    """static int 
 PSL1GHT_UpdateTextureYUV(SDL_Renderer * renderer, SDL_Texture * texture,
                      const SDL_Rect * rect,
                      const Uint8 *Yplane, int Ypitch,
