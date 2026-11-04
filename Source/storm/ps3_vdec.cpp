@@ -278,7 +278,7 @@ bool BuildAccessUnits(const Uint8 *data, size_t size, size_t expectedFrames, std
 	// Include any leading SPS/PPS bytes in the first AU. x264 normally writes
 	// the first AUD first, but accepting a leading prefix is harmless.
 	if (accessUnitStarts.front() != 0)
-		accessUnitStarts.insert(accessUnitStarts.begin(), 0);
+		accessUnitStarts.front() = 0;
 	if (accessUnitStarts.size() != expectedFrames)
 		return false;
 
@@ -706,10 +706,14 @@ bool PS3VdecMovieBegin(const char *filename, int flags)
 		PS3VdecMovieEnd();
 
 	auto state = std::make_unique<VdecMovieState>();
-	if (!LoadMovieAssets(filename, *state))
+	if (!LoadMovieAssets(filename, *state)) {
+		DestroyVdecMovieState(*state, false);
 		return false;
-	if (!AllocateDecodedFrame(*state))
+	}
+	if (!AllocateDecodedFrame(*state)) {
+		DestroyVdecMovieState(*state, false);
 		return false;
+	}
 	if (!OpenVdecDecoder(*state)) {
 		DestroyVdecMovieState(*state, false);
 		return false;
