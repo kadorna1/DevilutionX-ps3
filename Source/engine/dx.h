@@ -32,7 +32,7 @@ void RenderPresent();
 
 #ifdef __PS3__
 /** Upload and present an indexed Smacker frame directly through the RSX texture. */
-bool RenderIndexedVideoFrame(const uint8_t *pixels, int width, int height, const SDL_Color *palette);
+bool RenderIndexedVideoFrame(const Uint8 *pixels, int width, int height, const SDL_Color *palette);
 #endif
 
 } // namespace devilution
