@@ -114,4 +114,23 @@ set(DEVILUTIONX_PALETTE_TRANSPARENCY_BLACK_16_LUT OFF CACHE BOOL "" FORCE)
 # for SDL2. The PS3 toolchain adds the portlibs prefix to CMAKE_FIND_ROOT_PATH.
 list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/ps3/finders")
 
+# Import the Cell H.264 VDEC and sysmodule entry points from PSL1GHT.
+# The VDEC runtime itself is loaded on demand with sysModuleLoad().
+find_library(DEVILUTIONX_PS3_VDEC_LIBRARY
+  NAMES vdec
+  PATHS "\${PSL1GHT}/ppu/lib"
+  NO_DEFAULT_PATH
+  REQUIRED
+)
+find_library(DEVILUTIONX_PS3_SYSMODULE_LIBRARY
+  NAMES sysmodule
+  PATHS "\${PSL1GHT}/ppu/lib"
+  NO_DEFAULT_PATH
+  REQUIRED
+)
+list(APPEND DEVILUTIONX_PLATFORM_LINK_LIBRARIES
+  "\${DEVILUTIONX_PS3_VDEC_LIBRARY}"
+  "\${DEVILUTIONX_PS3_SYSMODULE_LIBRARY}"
+)
+
 set(CMAKE_DL_LIBS "")
