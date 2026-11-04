@@ -109,7 +109,7 @@ start_marker = "\n".join([
     "PSL1GHT_CreateTexture(SDL_Renderer * renderer, SDL_Texture * texture)",
     "{",
 ])
-end_marker = "\n".join(["", "static int", "PSL1GHT_UpdateTexture"])
+end_marker = "\n\nstatic int\nPSL1GHT_UpdateTexture"
 start = source.find(start_marker)
 end = source.find(end_marker, start + len(start_marker))
 if start < 0 or end < 0:
