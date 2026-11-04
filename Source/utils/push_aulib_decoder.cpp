@@ -42,6 +42,7 @@ void PushAulibDecoder::DiscardPendingSamples() noexcept
 {
 	const auto lock = std::lock_guard(queue_mutex_);
 	queue_ = std::queue<AudioQueueItem>();
+	queued_samples_ = 0;
 }
 
 bool PushAulibDecoder::open([[maybe_unused]] SDL_IOStream *rwops)
@@ -82,6 +83,7 @@ int PushAulibDecoder::doDecoding(float buf[], int len, bool &callAgain)
 				WriteFloats(*item, buf, remaining);
 				item->pos += remaining;
 				item->len -= remaining;
+				queued_samples_ -= remaining;
 				if (item->len == 0)
 					queue_.pop();
 				return len;
@@ -90,6 +92,7 @@ int PushAulibDecoder::doDecoding(float buf[], int len, bool &callAgain)
 			WriteFloats(*item, buf, item->len);
 			buf += item->len;
 			remaining -= static_cast<int>(item->len);
+			queued_samples_ -= item->len;
 			queue_.pop();
 		}
 	}
