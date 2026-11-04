@@ -461,7 +461,7 @@ bool SVidPlayBegin(const char *filename, int flags)
 		const int renderHeight = static_cast<int>(SVidHeight);
 #ifdef __PS3__
 		LogInfo("PS3 FMV: streaming texture create begin {}x{} format=0x{:08x}",
-		    renderWidth, renderHeight, DEVILUTIONX_DISPLAY_TEXTURE_FORMAT);
+		    renderWidth, renderHeight, static_cast<unsigned int>(DEVILUTIONX_DISPLAY_TEXTURE_FORMAT));
 		SDLTextureUniquePtr replacementTexture {
 		    SDL_CreateTexture(renderer, DEVILUTIONX_DISPLAY_TEXTURE_FORMAT,
 		        SDL_TEXTUREACCESS_STREAMING, renderWidth, renderHeight)
