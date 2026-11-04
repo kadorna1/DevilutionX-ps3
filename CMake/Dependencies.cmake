@@ -226,6 +226,9 @@ if(PACKET_ENCRYPTION)
 endif()
 
 add_subdirectory(3rdParty/libsmackerdec)
+if(PS3)
+  add_subdirectory(3rdParty/libsmackerps3)
+endif()
 
 if(WIN32 AND NOT UWP_LIB)
   add_subdirectory(3rdParty/find_steam_game)

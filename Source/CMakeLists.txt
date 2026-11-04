@@ -1066,9 +1066,13 @@ endif()
 
 add_devilutionx_object_library(libdevilutionx ${libdevilutionx_SRCS})
 target_include_directories(libdevilutionx PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
+set(_devilutionx_smacker_dependencies libsmackerdec)
+if(PS3)
+  list(APPEND _devilutionx_smacker_dependencies libsmackerps3)
+endif()
 target_link_dependencies(libdevilutionx PUBLIC
   DevilutionX::SDL
-  libsmackerdec
+  ${_devilutionx_smacker_dependencies}
   ${LUA_LIBRARIES}
   magic_enum::magic_enum
   sol2::sol2

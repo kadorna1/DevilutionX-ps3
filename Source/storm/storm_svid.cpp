@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <optional>
 
 #ifdef USE_SDL3
@@ -27,6 +28,9 @@
 #endif
 
 #include <SmackerDecoder.h>
+#ifdef __PS3__
+#include <PS3Smacker.h>
+#endif
 
 #include "engine/assets.hpp"
 #include "engine/dx.h"
@@ -72,6 +76,10 @@ uint64_t GetTicksSmk()
 uint32_t SVidWidth, SVidHeight;
 bool SVidLoop;
 SmackerHandle SVidHandle;
+#ifdef __PS3__
+PS3SmackerHandle SVidPS3Handle;
+bool SVidUsePS3Smacker = false;
+#endif
 std::unique_ptr<uint8_t[]> SVidFrameBuffer;
 SDLPaletteUniquePtr SVidPalette;
 SDLSurfaceUniquePtr SVidSurface;
@@ -83,6 +91,154 @@ uint32_t SVidFrameLength;
 #ifdef __PS3__
 uint32_t SVidDebugContinueCount;
 #endif
+
+bool SVidDecoderIsValid()
+{
+#ifdef __PS3__
+	return SVidUsePS3Smacker ? SVidPS3Handle.isValid : SVidHandle.isValid;
+#else
+	return SVidHandle.isValid;
+#endif
+}
+
+bool SVidDecoderOpen(const char *filename)
+{
+#ifdef __PS3__
+	SVidUsePS3Smacker = false;
+	SVidPS3Handle = PS3Smacker_Open(OpenAssetAsSdlRwOps(filename));
+	if (SVidPS3Handle.isValid) {
+		SVidUsePS3Smacker = true;
+		LogInfo("PS3 FMV: decoder backend=JonnyH libsmacker C (HDD disk-streaming)");
+		return true;
+	}
+	LogWarn("PS3 FMV: JonnyH libsmacker failed to open {}; retrying with libsmackerdec", filename);
+#endif
+	SVidHandle = Smacker_Open(OpenAssetAsSdlRwOps(filename));
+#ifdef __PS3__
+	SVidUsePS3Smacker = false;
+#endif
+	return SVidHandle.isValid;
+}
+
+void SVidDecoderClose()
+{
+#ifdef __PS3__
+	if (SVidUsePS3Smacker) {
+		PS3Smacker_Close(SVidPS3Handle);
+		SVidUsePS3Smacker = false;
+		return;
+	}
+#endif
+	if (SVidHandle.isValid)
+		Smacker_Close(SVidHandle);
+}
+
+SmackerAudioInfo SVidDecoderGetAudioTrackDetails(uint32_t trackIndex)
+{
+#ifdef __PS3__
+	if (SVidUsePS3Smacker)
+		return PS3Smacker_GetAudioTrackDetails(SVidPS3Handle, trackIndex);
+#endif
+	return Smacker_GetAudioTrackDetails(SVidHandle, trackIndex);
+}
+
+uint32_t SVidDecoderGetAudioData(uint32_t trackIndex, int16_t *data)
+{
+#ifdef __PS3__
+	if (SVidUsePS3Smacker)
+		return PS3Smacker_GetAudioData(SVidPS3Handle, trackIndex, data);
+#endif
+	return Smacker_GetAudioData(SVidHandle, trackIndex, data);
+}
+
+uint32_t SVidDecoderGetNumFrames()
+{
+#ifdef __PS3__
+	if (SVidUsePS3Smacker)
+		return PS3Smacker_GetNumFrames(SVidPS3Handle);
+#endif
+	return Smacker_GetNumFrames(SVidHandle);
+}
+
+uint32_t SVidDecoderGetCurrentFrameNum()
+{
+#ifdef __PS3__
+	if (SVidUsePS3Smacker)
+		return PS3Smacker_GetCurrentFrameNum(SVidPS3Handle);
+#endif
+	return Smacker_GetCurrentFrameNum(SVidHandle);
+}
+
+uint32_t SVidDecoderGetNextFrame()
+{
+#ifdef __PS3__
+	if (SVidUsePS3Smacker)
+		return PS3Smacker_GetNextFrame(SVidPS3Handle);
+#endif
+	return Smacker_GetNextFrame(SVidHandle);
+}
+
+float SVidDecoderGetFrameRate()
+{
+#ifdef __PS3__
+	if (SVidUsePS3Smacker)
+		return PS3Smacker_GetFrameRate(SVidPS3Handle);
+#endif
+	return Smacker_GetFrameRate(SVidHandle);
+}
+
+bool SVidDecoderDidPaletteChange()
+{
+#ifdef __PS3__
+	if (SVidUsePS3Smacker)
+		return PS3Smacker_DidPaletteChange(SVidPS3Handle);
+#endif
+	return Smacker_DidPaletteChange(SVidHandle);
+}
+
+void SVidDecoderGetPalette(uint8_t *palette)
+{
+#ifdef __PS3__
+	if (SVidUsePS3Smacker) {
+		PS3Smacker_GetPalette(SVidPS3Handle, palette);
+		return;
+	}
+#endif
+	Smacker_GetPalette(SVidHandle, palette);
+}
+
+void SVidDecoderGetFrame(uint8_t *frame)
+{
+#ifdef __PS3__
+	if (SVidUsePS3Smacker) {
+		PS3Smacker_GetFrame(SVidPS3Handle, frame);
+		return;
+	}
+#endif
+	Smacker_GetFrame(SVidHandle, frame);
+}
+
+void SVidDecoderRewind()
+{
+#ifdef __PS3__
+	if (SVidUsePS3Smacker) {
+		PS3Smacker_Rewind(SVidPS3Handle);
+		return;
+	}
+#endif
+	Smacker_Rewind(SVidHandle);
+}
+
+void SVidDecoderGetFrameSize(uint32_t &width, uint32_t &height)
+{
+#ifdef __PS3__
+	if (SVidUsePS3Smacker) {
+		PS3Smacker_GetFrameSize(SVidPS3Handle, width, height);
+		return;
+	}
+#endif
+	Smacker_GetFrameSize(SVidHandle, width, height);
+}
 
 bool IsLandscapeFit(unsigned long srcW, unsigned long srcH, unsigned long dstW, unsigned long dstH)
 {
@@ -171,31 +327,35 @@ bool SVidLoadNextFrame()
 {
 #ifdef __PS3__
 	const uint32_t traceIndex = SVidDebugContinueCount == 0 ? 0 : SVidDebugContinueCount - 1;
-	const bool traceDecode = traceIndex < 16 || traceIndex % 5 == 0;
-	const uint32_t currentFrame = Smacker_GetCurrentFrameNum(SVidHandle);
+	const bool traceDecode = traceIndex < 64 || traceIndex % 30 == 0;
+	const uint32_t currentFrame = SVidDecoderGetCurrentFrameNum();
 	if (traceDecode)
 		LogInfo("PS3 FMV TRACE: Smacker next-frame decode begin call={} current={}", traceIndex, currentFrame);
 #endif
-	if (Smacker_GetCurrentFrameNum(SVidHandle) >= Smacker_GetNumFrames(SVidHandle)) {
+	if (SVidDecoderGetCurrentFrameNum() >= SVidDecoderGetNumFrames()) {
 		if (!SVidLoop) {
 			return false;
 		}
 
-		Smacker_Rewind(SVidHandle);
+		SVidDecoderRewind();
 	}
 
 	SVidFrameEnd += SVidFrameLength;
-	Smacker_GetNextFrame(SVidHandle);
+	const uint32_t decodedFrame = SVidDecoderGetNextFrame();
+	if (decodedFrame == std::numeric_limits<uint32_t>::max()) {
+		LogError("PS3 FMV: decoder reported an error at frame index {}", traceIndex);
+		return false;
+	}
 #ifdef __PS3__
 	if (traceDecode)
-		LogInfo("PS3 FMV TRACE: Smacker_GetNextFrame complete call={} current={}",
-		    traceIndex, Smacker_GetCurrentFrameNum(SVidHandle));
+		LogInfo("PS3 FMV TRACE: next-frame decode complete call={} current={}",
+		    traceIndex, SVidDecoderGetCurrentFrameNum());
 #endif
-	Smacker_GetFrame(SVidHandle, SVidFrameBuffer.get());
+	SVidDecoderGetFrame(SVidFrameBuffer.get());
 #ifdef __PS3__
 	if (traceDecode)
 		LogInfo("PS3 FMV TRACE: Smacker_GetFrame copy complete call={} current={}",
-		    traceIndex, Smacker_GetCurrentFrameNum(SVidHandle));
+		    traceIndex, SVidDecoderGetCurrentFrameNum());
 #endif
 
 	return true;
@@ -205,7 +365,7 @@ void UpdatePalette()
 {
 	constexpr size_t NumColors = 256;
 	uint8_t paletteData[NumColors * 3];
-	Smacker_GetPalette(SVidHandle, paletteData);
+	SVidDecoderGetPalette(paletteData);
 
 	SDL_Color *colors = SVidPalette->colors;
 	for (unsigned i = 0; i < NumColors; ++i) {
@@ -402,22 +562,21 @@ bool SVidPlayBegin(const char *filename, int flags)
 	// 0x800000 // Edge detection
 	// 0x200800 // Clear FB
 
-	auto *videoStream = OpenAssetAsSdlRwOps(filename);
-	SVidHandle = Smacker_Open(videoStream);
-	if (!SVidHandle.isValid) {
+	if (!SVidDecoderOpen(filename)) {
 #ifdef __PS3__
-		LogError("PS3 FMV: Smacker_Open failed for {}", filename);
+		LogError("PS3 FMV: no available Smacker decoder could open {}", filename);
 #endif
 		return false;
 	}
 #ifdef __PS3__
-	LogInfo("PS3 FMV: Smacker decoder opened {}", filename);
+	LogInfo("PS3 FMV: decoder opened {} backend={}", filename,
+	    SVidUsePS3Smacker ? "JonnyH libsmacker C" : "diasurgical libsmackerdec C++");
 #endif
 
 #ifndef NOSOUND
 	const bool enableAudio = (flags & 0x1000000) == 0;
 
-	auto audioInfo = Smacker_GetAudioTrackDetails(SVidHandle, 0);
+	auto audioInfo = SVidDecoderGetAudioTrackDetails(0);
 	LogVerbose(LogCategory::Audio, "SVid audio depth={} channels={} rate={}", audioInfo.bitsPerSample, audioInfo.nChannels, audioInfo.sampleRate);
 
 	if (enableAudio && audioInfo.bitsPerSample != 0) {
@@ -465,11 +624,22 @@ bool SVidPlayBegin(const char *filename, int flags)
 	// SMK format internally defines the frame rate as the frame duration
 	// in either milliseconds or SMK time units (0.01ms). The library converts it
 	// to FPS, which is always an integer, and here we convert it back to SMK time units.
-	SVidFrameLength = 100000 / static_cast<uint32_t>(Smacker_GetFrameRate(SVidHandle));
-	Smacker_GetFrameSize(SVidHandle, SVidWidth, SVidHeight);
+	const float frameRate = SVidDecoderGetFrameRate();
+	if (!(frameRate > 0.0F)) {
+		LogError("PS3 FMV: decoder reported an invalid frame rate");
+		SVidPlayEnd();
+		return false;
+	}
+	SVidFrameLength = static_cast<uint32_t>(100000.0F / frameRate);
+	if (SVidFrameLength == 0) {
+		LogError("PS3 FMV: calculated zero-length frame duration");
+		SVidPlayEnd();
+		return false;
+	}
+	SVidDecoderGetFrameSize(SVidWidth, SVidHeight);
 #ifdef __PS3__
 	LogInfo("PS3 FMV: {}x{} {} fps, {} frames",
-	    SVidWidth, SVidHeight, Smacker_GetFrameRate(SVidHandle), Smacker_GetNumFrames(SVidHandle));
+	    SVidWidth, SVidHeight, SVidDecoderGetFrameRate(), SVidDecoderGetNumFrames());
 #endif
 
 #ifndef USE_SDL1
@@ -536,8 +706,13 @@ bool SVidPlayBegin(const char *filename, int flags)
 #endif
 
 	// Decode first frame.
-	Smacker_GetNextFrame(SVidHandle);
-	Smacker_GetFrame(SVidHandle, SVidFrameBuffer.get());
+	const uint32_t firstFrame = SVidDecoderGetNextFrame();
+	if (firstFrame == std::numeric_limits<uint32_t>::max()) {
+		LogError("PS3 FMV: decoder failed on the first frame of {}", filename);
+		SVidPlayEnd();
+		return false;
+	}
+	SVidDecoderGetFrame(SVidFrameBuffer.get());
 #ifdef __PS3__
 	LogInfo("PS3 FMV: first frame decoded");
 #endif
@@ -569,7 +744,7 @@ bool SVidPlayContinue()
 	const uint64_t frameDeadline = SVidFrameEnd;
 #ifdef __PS3__
 	const Uint32 continueStartTicks = SDL_GetTicks();
-	const uint32_t frameNumber = Smacker_GetCurrentFrameNum(SVidHandle);
+	const uint32_t frameNumber = SVidDecoderGetCurrentFrameNum();
 	const uint32_t continueIndex = SVidDebugContinueCount++;
 	const bool traceFrame = continueIndex < 16 || continueIndex % 5 == 0;
 	if (traceFrame)
@@ -584,7 +759,7 @@ bool SVidPlayContinue()
 	if (traceFrame)
 		LogInfo("PS3 FMV TRACE: palette check begin frame={}", frameNumber);
 #endif
-	const bool paletteChanged = Smacker_DidPaletteChange(SVidHandle);
+	const bool paletteChanged = SVidDecoderDidPaletteChange();
 	if (paletteChanged)
 		UpdatePalette();
 #ifdef __PS3__
@@ -635,7 +810,7 @@ bool SVidPlayContinue()
 		if (traceFrame)
 			LogInfo("PS3 FMV TRACE: audio decode begin frame={}", frameNumber);
 #endif
-		const auto len = Smacker_GetAudioData(SVidHandle, 0, buf);
+		const auto len = SVidDecoderGetAudioData(0, buf);
 #ifdef __PS3__
 		if (traceFrame)
 			LogInfo("PS3 FMV TRACE: audio decode complete frame={} bytes={}", frameNumber, len);
@@ -809,12 +984,12 @@ void SVidPlayEnd()
 #endif
 
 #ifdef __PS3__
-	LogInfo("PS3 FMV END: decoder close begin valid={}", SVidHandle.isValid);
+	LogInfo("PS3 FMV END: decoder close begin valid={}", SVidDecoderIsValid());
 #endif
-	if (SVidHandle.isValid)
-		Smacker_Close(SVidHandle);
+	if (SVidDecoderIsValid())
+		SVidDecoderClose();
 #ifdef __PS3__
-	LogInfo("PS3 FMV END: decoder close complete valid={}", SVidHandle.isValid);
+	LogInfo("PS3 FMV END: decoder close complete valid={}", SVidDecoderIsValid());
 #endif
 
 #ifdef __PS3__

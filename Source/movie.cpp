@@ -84,8 +84,28 @@ void play_movie(const char *pszMovie, bool userCanClose)
 #endif
 		SDL_Event event;
 		uint16_t modState;
+#ifdef __PS3__
+		uint32_t ps3MovieLoopIteration = 0;
+#endif
 		while (movie_playing) {
-			while (movie_playing && FetchMessage(&event, &modState)) {
+#ifdef __PS3__
+			const bool traceMovieLoop = ps3MovieLoopIteration < 64 || ps3MovieLoopIteration % 30 == 0;
+			if (traceMovieLoop)
+				LogInfo("PS3 movie loop: iteration={} event polling begin", ps3MovieLoopIteration);
+#endif
+			while (movie_playing) {
+#ifdef __PS3__
+				if (traceMovieLoop)
+					LogInfo("PS3 movie loop: iteration={} FetchMessage begin", ps3MovieLoopIteration);
+#endif
+				const bool eventAvailable = FetchMessage(&event, &modState);
+#ifdef __PS3__
+				if (traceMovieLoop)
+					LogInfo("PS3 movie loop: iteration={} FetchMessage complete available={} type={}",
+					    ps3MovieLoopIteration, eventAvailable, eventAvailable ? static_cast<int>(event.type) : -1);
+#endif
+				if (!eventAvailable)
+					break;
 				if (userCanClose) {
 					for (const ControllerButtonEvent ctrlEvent : ToControllerButtonEvents(event)) {
 						if (!SkipsMovie(ctrlEvent))
@@ -143,9 +163,27 @@ void play_movie(const char *pszMovie, bool userCanClose)
 					break;
 				}
 			}
+#ifdef __PS3__
+			if (traceMovieLoop)
+				LogInfo("PS3 movie loop: iteration={} event polling complete movie_playing={}",
+				    ps3MovieLoopIteration, movie_playing);
+#endif
 			// A skip or quit event can clear movie_playing inside FetchMessage().
 			// Do not decode, queue audio for, or present one extra frame afterward.
-			if (!movie_playing || !ContinueMoviePlayback())
+			if (!movie_playing)
+				break;
+#ifdef __PS3__
+			if (traceMovieLoop)
+				LogInfo("PS3 movie loop: iteration={} ContinueMoviePlayback begin", ps3MovieLoopIteration);
+#endif
+			const bool hasNextFrame = ContinueMoviePlayback();
+#ifdef __PS3__
+			if (traceMovieLoop)
+				LogInfo("PS3 movie loop: iteration={} ContinueMoviePlayback complete next={}",
+				    ps3MovieLoopIteration, hasNextFrame);
+			++ps3MovieLoopIteration;
+#endif
+			if (!hasNextFrame)
 				break;
 		}
 #ifdef __PS3__
