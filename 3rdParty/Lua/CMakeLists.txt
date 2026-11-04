@@ -276,6 +276,24 @@ extern void PS3LuaRawBootLogStatus(int status, int callbackReturned);
       _ps3_lua_do_content "${_ps3_lua_do_content}")
   endif()
 
+  # Snapshot the status at the first instruction after setjmp and
+  # immediately after the callback, to separate jump-buffer setup from
+  # code executed by f_luaopen (including PS3 diagnostic calls).
+  if(NOT _ps3_lua_do_content MATCHES "PS3 Lua status checkpoint at callback entry")
+    string(REPLACE
+      [=[    PS3_LUA_CORE_TRACE("Lua core: protected callback body entered");]=]
+      [=[    PS3_LUA_CORE_TRACE_STATUS(lj.status, -6); /* PS3 Lua status checkpoint at callback entry */
+    PS3_LUA_CORE_TRACE("Lua core: protected callback body entered");]=]
+      _ps3_lua_do_content "${_ps3_lua_do_content}")
+  endif()
+  if(NOT _ps3_lua_do_content MATCHES "PS3 Lua status checkpoint at callback return")
+    string(REPLACE
+      [=[    (*f)(L, ud);]=]
+      [=[    (*f)(L, ud);
+    PS3_LUA_CORE_TRACE_STATUS(lj.status, -7); /* PS3 Lua status checkpoint at callback return */]=]
+      _ps3_lua_do_content "${_ps3_lua_do_content}")
+  endif()
+
   # Record the initialized status before entering the protected callback.
   if(NOT _ps3_lua_do_content MATCHES "PS3_LUA_CORE_TRACE_STATUS\\(lj.status, -2\\)")
     string(REPLACE
