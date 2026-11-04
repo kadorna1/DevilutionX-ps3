@@ -178,20 +178,8 @@ bool SVidLoadNextFrame()
 	}
 
 	SVidFrameEnd += SVidFrameLength;
-#ifdef __PS3__
-	const uint32_t frameNumber = Smacker_GetCurrentFrameNum(SVidHandle);
-	const bool traceFrame = frameNumber <= 2 || frameNumber % 60 == 0;
-	const Uint32 decodeStart = SDL_GetTicks();
-	if (traceFrame)
-		LogInfo("PS3 FMV: decode frame {} begin", frameNumber);
-#endif
 	Smacker_GetNextFrame(SVidHandle);
 	Smacker_GetFrame(SVidHandle, SVidFrameBuffer.get());
-#ifdef __PS3__
-	if (traceFrame)
-		LogInfo("PS3 FMV: decode frame {} complete in {} ms",
-		    frameNumber, SDL_GetTicks() - decodeStart);
-#endif
 
 	return true;
 }
@@ -234,13 +222,19 @@ void UpdatePalette()
 #endif
 }
 
-bool BlitFrame(bool traceFrame)
+bool BlitFrame(
+#ifdef __PS3__
+    PS3FMVRenderStats *renderStats
+#else
+    bool
+#endif
+)
 {
 #ifdef __PS3__
 	// Write palette-expanded pixels straight into the streaming RSX texture.
 	// This avoids an indexed SDL surface blit followed by a second full-frame
 	// software-surface-to-texture copy in RenderPresent().
-	if (renderer != nullptr && RenderIndexedVideoFrame(SVidFrameBuffer.get(), static_cast<int>(SVidWidth), static_cast<int>(SVidHeight), SVidPalette->colors, traceFrame))
+	if (renderer != nullptr && RenderIndexedVideoFrame(SVidFrameBuffer.get(), static_cast<int>(SVidWidth), static_cast<int>(SVidHeight), SVidPalette->colors, renderStats))
 		return true;
 #endif
 #ifndef USE_SDL1
@@ -252,17 +246,18 @@ bool BlitFrame(bool traceFrame)
 		    SDL_BlitSurface(SVidSurface.get(), nullptr, GetOutputSurface(), nullptr) <= -1
 #endif
 		) {
-			Log("{}", SDL_GetError());
-			return false;
+			ErrSdl();
 		}
-	} else
-#endif
+	}
+
+	RenderPresent();
+	return true;
+#else
 	{
 		SDL_Surface *outputSurface = GetOutputSurface();
 #ifdef USE_SDL1
 		const bool isIndexedOutputFormat = SDLBackport_IsPixelFormatIndexed(outputSurface->format);
 #else
-
 #ifdef USE_SDL3
 		const SDL_PixelFormat wndFormat = SDL_GetWindowPixelFormat(ghMainWnd);
 #else
@@ -320,6 +315,7 @@ bool BlitFrame(bool traceFrame)
 
 	RenderPresent();
 	return true;
+#endif
 }
 
 #if defined(USE_SDL3) && !defined(NOSOUND)
@@ -542,56 +538,49 @@ bool SVidPlayContinue()
 	const uint32_t frameNumber = Smacker_GetCurrentFrameNum(SVidHandle);
 	const uint32_t continueIndex = SVidDebugContinueCount++;
 	const bool traceFrame = continueIndex < 3 || continueIndex % 60 == 0;
-	if (traceFrame) {
-		const uint64_t entryTime = GetTicksSmk();
-		const bool lateAtEntry = entryTime >= SVidFrameEnd;
-		const uint64_t delta = lateAtEntry ? entryTime - SVidFrameEnd : SVidFrameEnd - entryTime;
-		LogInfo("PS3 FMV: continue #{} current frame {} begin; {} deadline by {} ms",
-		    continueIndex, frameNumber, lateAtEntry ? "past" : "before", TimeSmkToMs(delta));
-	}
+	const uint64_t entryTime = GetTicksSmk();
+	const int64_t deadlineOffsetMs = entryTime >= SVidFrameEnd
+	    ? static_cast<int64_t>(TimeSmkToMs(entryTime - SVidFrameEnd))
+	    : -static_cast<int64_t>(TimeSmkToMs(SVidFrameEnd - entryTime));
+	const Uint32 paletteStartTicks = traceFrame ? SDL_GetTicks() : 0;
 #else
 	const bool traceFrame = false;
 #endif
-	if (Smacker_DidPaletteChange(SVidHandle)) {
+	if (Smacker_DidPaletteChange(SVidHandle))
 		UpdatePalette();
 #ifdef __PS3__
-		if (traceFrame)
-			LogInfo("PS3 FMV: frame {} palette updated", frameNumber);
-#endif
-	}
-#ifdef __PS3__
-	if (traceFrame)
-		LogInfo("PS3 FMV: continue frame {} palette check complete", frameNumber);
+	const Uint32 paletteMs = traceFrame ? SDL_GetTicks() - paletteStartTicks : 0;
 #endif
 
 	if (GetTicksSmk() >= SVidFrameEnd) {
 #ifdef __PS3__
-		if (traceFrame) {
-			const uint64_t lateBy = GetTicksSmk() - SVidFrameEnd;
-			LogInfo("PS3 FMV: frame {} skipped before audio; deadline exceeded by {} ms",
-			    frameNumber, TimeSmkToMs(lateBy));
-		}
+		const uint64_t lateByMs = TimeSmkToMs(GetTicksSmk() - SVidFrameEnd);
 #endif
 #if defined(USE_SDL3) && !defined(NOSOUND)
 		if (ShouldPushAudioData()) SDL_ClearAudioStream(SVidAudioStream);
 #endif
+#ifdef __PS3__
+		const Uint32 decodeStartTicks = traceFrame ? SDL_GetTicks() : 0;
+#endif
 		const bool hasNextFrame = SVidLoadNextFrame();
 #ifdef __PS3__
-		if (traceFrame)
-			LogInfo("PS3 FMV: pre-audio skip recovery decoded next frame in {} ms",
+		if (traceFrame) {
+			const Uint32 decodeMs = SDL_GetTicks() - decodeStartTicks;
+			LogInfo("PS3 FMV: frame {} skipped before audio; deadline_offset={} ms late={} ms palette={} ms decode_next={} ms total={} ms",
+			    frameNumber, deadlineOffsetMs, lateByMs, paletteMs, decodeMs,
 			    SDL_GetTicks() - continueStartTicks);
+		}
 #endif
 		return hasNextFrame; // Skip video and audio if the system is too slow
 	}
 
+#ifdef __PS3__
+	const Uint32 audioStartTicks = traceFrame ? SDL_GetTicks() : 0;
+#endif
 #ifndef NOSOUND
 	if (ShouldPushAudioData()) {
 		std::int16_t *buf = SVidAudioBuffer.get();
 		const auto len = Smacker_GetAudioData(SVidHandle, 0, buf);
-#ifdef __PS3__
-		if (traceFrame)
-			LogInfo("PS3 FMV: frame {} audio decoded {} bytes", frameNumber, len);
-#endif
 #ifdef USE_SDL3
 		if (!SDL_PutAudioStreamData(SVidAudioStream, buf, static_cast<int>(len))) {
 			LogError(LogCategory::Audio, "SDL_PutAudioStreamData (from SVidPlayContinue): {}", SDL_GetError());
@@ -605,69 +594,68 @@ bool SVidPlayContinue()
 		} else {
 			SVidAudioDecoder->PushSamples(reinterpret_cast<const std::uint8_t *>(buf), len);
 		}
-#ifdef __PS3__
-		if (traceFrame)
-			LogInfo("PS3 FMV: frame {} audio queued", frameNumber);
-#endif
 #endif
 	}
+#endif
+#ifdef __PS3__
+	const Uint32 audioMs = traceFrame ? SDL_GetTicks() - audioStartTicks : 0;
 #endif
 
 	if (GetTicksSmk() >= SVidFrameEnd) {
 #ifdef __PS3__
-		if (traceFrame) {
-			const uint64_t lateBy = GetTicksSmk() - SVidFrameEnd;
-			LogInfo("PS3 FMV: frame {} skipped after audio; deadline exceeded by {} ms",
-			    frameNumber, TimeSmkToMs(lateBy));
-		}
+		const uint64_t lateByMs = TimeSmkToMs(GetTicksSmk() - SVidFrameEnd);
+		const Uint32 decodeStartTicks = traceFrame ? SDL_GetTicks() : 0;
 #endif
 		const bool hasNextFrame = SVidLoadNextFrame();
 #ifdef __PS3__
-		if (traceFrame)
-			LogInfo("PS3 FMV: post-audio skip recovery decoded next frame in {} ms",
+		if (traceFrame) {
+			const Uint32 decodeMs = SDL_GetTicks() - decodeStartTicks;
+			LogInfo("PS3 FMV: frame {} skipped after audio; deadline_offset={} ms late={} ms palette={} ms audio={} ms decode_next={} ms total={} ms",
+			    frameNumber, deadlineOffsetMs, lateByMs, paletteMs, audioMs, decodeMs,
 			    SDL_GetTicks() - continueStartTicks);
+		}
 #endif
 		return hasNextFrame; // Skip video when the system is too slow
 	}
 
 #ifdef __PS3__
-	if (traceFrame)
-		LogInfo("PS3 FMV: frame {} presentation begin", frameNumber);
+	PS3FMVRenderStats renderStats {};
 	const Uint32 presentationStartTicks = traceFrame ? SDL_GetTicks() : 0;
-#endif
-	if (!BlitFrame(traceFrame))
+	if (!BlitFrame(traceFrame ? &renderStats : nullptr))
 		return false;
-#ifdef __PS3__
-	if (traceFrame) {
-		LogInfo("PS3 FMV: frame {} presentation complete in {} ms",
-		    frameNumber, SDL_GetTicks() - presentationStartTicks);
-	}
+	const Uint32 presentationMs = traceFrame ? SDL_GetTicks() - presentationStartTicks : 0;
+#else
+	if (!BlitFrame(false))
+		return false;
 #endif
 
 	const uint64_t now = GetTicksSmk();
+	Uint32 pacingWaitMs = 0;
 	if (now < SVidFrameEnd) {
 		const Uint32 delayMs = static_cast<Uint32>(TimeSmkToMs(SVidFrameEnd - now));
+		const Uint32 waitStartTicks = traceFrame ? SDL_GetTicks() : 0;
+		SDL_Delay(delayMs); // wait with next frame if the system is too fast
 #ifdef __PS3__
 		if (traceFrame)
-			LogInfo("PS3 FMV: frame {} pacing wait {} ms", frameNumber, delayMs);
-#endif
-		SDL_Delay(delayMs); // wait with next frame if the system is too fast
-	} else {
-#ifdef __PS3__
-		if (traceFrame) {
-			const uint64_t lateBy = now - SVidFrameEnd;
-			LogInfo("PS3 FMV: frame {} completed presentation {} ms past deadline",
-			    frameNumber, TimeSmkToMs(lateBy));
-		}
+			pacingWaitMs = SDL_GetTicks() - waitStartTicks;
 #endif
 	}
 
+#ifdef __PS3__
+	const Uint32 decodeStartTicks = traceFrame ? SDL_GetTicks() : 0;
+#endif
 	const bool hasNextFrame = SVidLoadNextFrame();
 #ifdef __PS3__
 	if (traceFrame) {
-		LogInfo("PS3 FMV: frame {} pacing complete; next frame {}; continue total {} ms",
-		    frameNumber, hasNextFrame ? "ready" : "end of movie",
-		    SDL_GetTicks() - continueStartTicks);
+		const Uint32 decodeMs = SDL_GetTicks() - decodeStartTicks;
+		const int64_t lateAfterPresentMs = GetTicksSmk() >= SVidFrameEnd
+		    ? static_cast<int64_t>(TimeSmkToMs(GetTicksSmk() - SVidFrameEnd))
+		    : -static_cast<int64_t>(TimeSmkToMs(SVidFrameEnd - GetTicksSmk()));
+		LogInfo("PS3 FMV: frame {} timing: deadline_offset={} ms late_after={} ms palette={} ms audio={} ms presentation={} ms [setup={} lock={} expand={} copy={} present={}] wait={} ms decode_next={} ms total={} ms next={}",
+		    frameNumber, deadlineOffsetMs, lateAfterPresentMs, paletteMs, audioMs, presentationMs,
+		    renderStats.textureSetupMs, renderStats.textureLockMs, renderStats.pixelExpandMs,
+		    renderStats.renderCopyMs, renderStats.renderPresentMs, pacingWaitMs, decodeMs,
+		    SDL_GetTicks() - continueStartTicks, hasNextFrame ? "ready" : "end");
 	}
 #endif
 	return hasNextFrame;
