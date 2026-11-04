@@ -353,7 +353,7 @@ void RenderPresent()
 
 
 #ifdef __PS3__
-bool RenderIndexedVideoFrame(const Uint8 *pixels, int width, int height, const SDL_Color *palette)
+bool RenderIndexedVideoFrame(const Uint8 *pixels, int width, int height, const SDL_Color *palette, bool traceFrame)
 {
 	if (renderer == nullptr || texture == nullptr || pixels == nullptr || palette == nullptr || width <= 0 || height <= 0) {
 		LogError("PS3 FMV direct presentation has invalid renderer, texture, or frame data");
@@ -376,7 +376,8 @@ bool RenderIndexedVideoFrame(const Uint8 *pixels, int width, int height, const S
 	static bool paletteCacheValid = false;
 	if (!paletteCacheValid || cachedFormat != textureFormat
 	    || std::memcmp(cachedColors, palette, sizeof(cachedColors)) != 0) {
-		SDL_PixelFormat *pixelFormat = SDL_AllocFormat(textureFormat);
+		if (traceFrame) LogInfo("PS3 FMV RSX: texture {}x{} format 0x{:08x}", textureWidth, textureHeight, textureFormat);
+	SDL_PixelFormat *pixelFormat = SDL_AllocFormat(textureFormat);
 		if (pixelFormat == nullptr) {
 			LogError("PS3 FMV could not allocate texture pixel format: {}", SDL_GetError());
 			return false;
@@ -392,6 +393,7 @@ bool RenderIndexedVideoFrame(const Uint8 *pixels, int width, int height, const S
 	}
 
 	const SDL_Rect fullFrameRect { 0, 0, width, height };
+	if (traceFrame) LogInfo("PS3 FMV RSX: palette converted");
 	void *lockedPixels = nullptr;
 	int lockedPitch = 0;
 	if (SDL_LockTexture(texture.get(), &fullFrameRect, &lockedPixels, &lockedPitch) < 0) {
@@ -399,6 +401,7 @@ bool RenderIndexedVideoFrame(const Uint8 *pixels, int width, int height, const S
 		return false;
 	}
 
+	if (traceFrame) LogInfo("PS3 FMV RSX: texture locked (pitch {})", lockedPitch);
 	const size_t rowBytes = static_cast<size_t>(width) * sizeof(Uint32);
 	if (lockedPixels == nullptr || lockedPitch < 0 || static_cast<size_t>(lockedPitch) < rowBytes) {
 		SDL_UnlockTexture(texture.get());
@@ -416,6 +419,7 @@ bool RenderIndexedVideoFrame(const Uint8 *pixels, int width, int height, const S
 		source += width;
 	}
 	SDL_UnlockTexture(texture.get());
+	if (traceFrame) LogInfo("PS3 FMV RSX: indexed pixels expanded and texture unlocked");
 
 	if (SDL_SetRenderDrawColor(renderer, 0, 0, 0, SDL_ALPHA_OPAQUE) < 0
 	    || SDL_RenderClear(renderer) < 0
@@ -423,7 +427,9 @@ bool RenderIndexedVideoFrame(const Uint8 *pixels, int width, int height, const S
 		LogError("PS3 FMV RSX presentation failed: {}", SDL_GetError());
 		return false;
 	}
+	if (traceFrame) LogInfo("PS3 FMV RSX: render copy queued");
 	SDL_RenderPresent(renderer);
+	if (traceFrame) LogInfo("PS3 FMV RSX: frame presented");
 	static bool activePathLogged = false;
 	if (!activePathLogged) {
 		LogInfo("PS3 FMV: direct indexed-to-RSX texture upload active");
