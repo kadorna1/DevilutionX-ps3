@@ -563,13 +563,17 @@ bool SVidPlayContinue()
 	    : -static_cast<int64_t>(TimeSmkToMs(frameDeadline - entryTime));
 	const Uint32 paletteStartTicks = traceFrame ? SDL_GetTicks() : 0;
 #endif
+#ifdef __PS3__
 	if (continueIndex < 16)
 		LogInfo("PS3 FMV TRACE: palette check begin frame={}", frameNumber);
+#endif
 	const bool paletteChanged = Smacker_DidPaletteChange(SVidHandle);
 	if (paletteChanged)
 		UpdatePalette();
+#ifdef __PS3__
 	if (continueIndex < 16)
 		LogInfo("PS3 FMV TRACE: palette check complete frame={} changed={}", frameNumber, paletteChanged);
+#endif
 #ifdef __PS3__
 	const Uint32 paletteMs = traceFrame ? SDL_GetTicks() - paletteStartTicks : 0;
 #endif
@@ -691,11 +695,15 @@ bool SVidPlayContinue()
 #ifdef __PS3__
 		const Uint32 waitStartTicks = traceFrame ? SDL_GetTicks() : 0;
 #endif
+#ifdef __PS3__
 		if (continueIndex < 16)
 			LogInfo("PS3 FMV TRACE: pacing delay begin frame={} ms={}", frameNumber, delayMs);
+#endif
 		SDL_Delay(delayMs); // wait with next frame if the system is too fast
+#ifdef __PS3__
 		if (continueIndex < 16)
 			LogInfo("PS3 FMV TRACE: pacing delay complete frame={}", frameNumber);
+#endif
 #ifdef __PS3__
 		if (traceFrame)
 			pacingWaitMs = SDL_GetTicks() - waitStartTicks;
@@ -705,11 +713,15 @@ bool SVidPlayContinue()
 #ifdef __PS3__
 	const Uint32 decodeStartTicks = traceFrame ? SDL_GetTicks() : 0;
 #endif
+#ifdef __PS3__
 	if (continueIndex < 16)
 		LogInfo("PS3 FMV TRACE: next-frame decode begin after frame={}", frameNumber);
+#endif
 	const bool hasNextFrame = SVidLoadNextFrame();
+#ifdef __PS3__
 	if (continueIndex < 16)
 		LogInfo("PS3 FMV TRACE: next-frame decode complete after frame={} next={}", frameNumber, hasNextFrame);
+#endif
 #ifdef __PS3__
 	if (traceFrame) {
 		const Uint32 decodeMs = SDL_GetTicks() - decodeStartTicks;
