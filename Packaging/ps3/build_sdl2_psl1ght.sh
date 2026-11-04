@@ -55,8 +55,8 @@ fi
 git -C "$SDL2_SOURCE" show "HEAD:$SDL2_RENDERER" > "$SDL2_SOURCE/$SDL2_RENDERER"
 git -C "$SDL2_SOURCE" show "HEAD:$SDL2_JOYSTICK" > "$SDL2_SOURCE/$SDL2_JOYSTICK"
 
-renderer_worktree_blob="$(git -C "$SDL2_SOURCE" hash-object -- "$SDL2_SOURCE/$SDL2_RENDERER")"
-joystick_worktree_blob="$(git -C "$SDL2_SOURCE" hash-object -- "$SDL2_SOURCE/$SDL2_JOYSTICK")"
+renderer_worktree_blob="$(git -C "$SDL2_SOURCE" hash-object -- "$SDL2_RENDERER")"
+joystick_worktree_blob="$(git -C "$SDL2_SOURCE" hash-object -- "$SDL2_JOYSTICK")"
 if [[ "$renderer_worktree_blob" != "$SDL2_RENDERER_BLOB" ]]; then
   echo "error: SDL2 renderer working copy does not match its verified Git blob" >&2
   echo "expected blob: $SDL2_RENDERER_BLOB" >&2
