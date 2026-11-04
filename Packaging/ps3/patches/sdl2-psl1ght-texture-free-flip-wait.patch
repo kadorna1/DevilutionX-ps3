@@ -1,18 +1,22 @@
 diff --git a/src/render/psl1ght/SDL_PSL1GHTrender.c b/src/render/psl1ght/SDL_PSL1GHTrender.c
 --- a/src/render/psl1ght/SDL_PSL1GHTrender.c
 +++ b/src/render/psl1ght/SDL_PSL1GHTrender.c
-@@ -806,14 +806,23 @@
+@@ -806,14 +806,29 @@
  static void
  PSL1GHT_DestroyTexture(SDL_Renderer * renderer, SDL_Texture * texture)
  {
 +    PSL1GHT_RenderData *data = (PSL1GHT_RenderData *) renderer->driverdata;
      SDL_Surface *surface = (SDL_Surface *) texture->driverdata;
-
+ 
++    SDL_Log("PSL1GHT DestroyTexture begin: texture=%p driverdata=%p surface=%p pixels=%p first_fb=%d flip_status=%u",
++        texture, texture->driverdata, surface, surface ? surface->pixels : NULL,
++        data ? (int)data->first_fb : -1, (unsigned int)gcmGetFlipStatus());
      if (!surface)
      {
++        SDL_Log("PSL1GHT DestroyTexture: no surface; returning");
          return;
      }
-
+ 
 -    // TODO: Wait for the DMA transfer to complete
 +    /*
 +     * Wait for pending RSX flip before freeing texture memory. The
@@ -20,9 +24,17 @@ diff --git a/src/render/psl1ght/SDL_PSL1GHTrender.c b/src/render/psl1ght/SDL_PSL
 +     * which also ensures the last RSX blit no longer reads this texture.
 +     */
 +    if (data && !data->first_fb) {
++        SDL_Log("PSL1GHT DestroyTexture: waitFlip begin status=%u",
++            (unsigned int)gcmGetFlipStatus());
 +        waitFlip();
++        SDL_Log("PSL1GHT DestroyTexture: waitFlip complete status=%u",
++            (unsigned int)gcmGetFlipStatus());
 +    }
 +
++    SDL_Log("PSL1GHT DestroyTexture: rsxFree begin pixels=%p", surface->pixels);
      rsxFree(surface->pixels);
++    SDL_Log("PSL1GHT DestroyTexture: rsxFree complete");
++    SDL_Log("PSL1GHT DestroyTexture: SDL_FreeSurface begin surface=%p", surface);
      SDL_FreeSurface(surface);
++    SDL_Log("PSL1GHT DestroyTexture: SDL_FreeSurface complete");
  }
