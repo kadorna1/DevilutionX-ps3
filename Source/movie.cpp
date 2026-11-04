@@ -64,7 +64,7 @@ void play_movie(const char *pszMovie, bool userCanClose)
 						if (!SkipsMovie(ctrlEvent))
 							continue;
 #ifdef __PS3__
-						LogInfo("PS3 movie: skip requested by controller event type={} button={}", static_cast<int>(event.type), static_cast<int>(ctrlEvent));
+						LogInfo("PS3 movie: skip requested by controller event type={} button={} up={}", static_cast<int>(event.type), static_cast<int>(ctrlEvent.button), ctrlEvent.up);
 #endif
 						movie_playing = false;
 						break;
