@@ -596,8 +596,8 @@ bool SVidPlayContinue()
 		return SVidLoadNextFrame(); // Skip video if the system is to slow
 	}
 
-	if (traceFrame)
 #ifdef __PS3__
+	if (traceFrame)
 		LogInfo("PS3 FMV: frame {} presentation begin", frameNumber);
 #endif
 	if (!BlitFrame())
