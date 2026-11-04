@@ -328,9 +328,9 @@ extern void PS3LuaRawBootLogStatus(int status, int callbackReturned);
       _ps3_lua_do_content "${_ps3_lua_do_content}")
   endif()
 
-  if(NOT _ps3_lua_do_content MATCHES "PS3_LUA_CORE_TRACE_STATUS\\\\(lj.status, -6\\\\)" OR
-     NOT _ps3_lua_do_content MATCHES "PS3_LUA_CORE_TRACE_STATUS\\\\(lj.status, -7\\\\)" OR
-     NOT _ps3_lua_do_content MATCHES "PS3_LUA_CORE_TRACE_STATUS\\\\(errcode, -1\\\\)")
+  if(NOT _ps3_lua_do_content MATCHES "PS3 Lua status checkpoint at callback entry" OR
+     NOT _ps3_lua_do_content MATCHES "PS3 Lua status checkpoint at callback return" OR
+     NOT _ps3_lua_do_content MATCHES "errcode, -1")
     message(FATAL_ERROR "Failed to apply PS3 Lua protected-call status probes")
   endif()
 
