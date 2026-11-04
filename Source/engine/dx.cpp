@@ -381,9 +381,10 @@ bool RenderIndexedVideoFrame(const Uint8 *pixels, int width, int height, const S
 	}
 	SDL_FreeFormat(pixelFormat);
 
+	const SDL_Rect fullFrameRect { 0, 0, width, height };
 	void *lockedPixels = nullptr;
 	int lockedPitch = 0;
-	if (SDL_LockTexture(texture.get(), nullptr, &lockedPixels, &lockedPitch) < 0) {
+	if (SDL_LockTexture(texture.get(), &fullFrameRect, &lockedPixels, &lockedPitch) < 0) {
 		LogError("PS3 FMV could not lock RSX texture: {}", SDL_GetError());
 		return false;
 	}
