@@ -10,6 +10,7 @@
 #include <limits>
 #include <memory>
 #include <optional>
+#include <stdlib.h>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -823,9 +824,9 @@ bool PS3VdecMovieContinue()
 	}
 	++state.frameIndex;
 	const bool reachedEnd = state.frameIndex >= state.accessUnits.size();
-	if (reachedEnd && !state.loop)
-		return false;
 
+	// Keep the final image and its trailing audio alive for one complete frame
+	// interval, matching the original Smacker playback timing.
 	const uint64_t frameElapsedMs = static_cast<uint64_t>(state.frameIndex) * 1000ULL
 	    * static_cast<uint64_t>(state.metadata.fpsDenominator)
 	    / static_cast<uint64_t>(state.metadata.fpsNumerator);
@@ -834,8 +835,12 @@ bool PS3VdecMovieContinue()
 		const Uint64 delay = frameElapsedMs - elapsed;
 		SDL_Delay(static_cast<Uint32>(std::min<Uint64>(delay, std::numeric_limits<Uint32>::max())));
 	}
-	if (reachedEnd && !RestartVdecSequence(state))
-		return false;
+	if (reachedEnd) {
+		if (!state.loop)
+			return false;
+		if (!RestartVdecSequence(state))
+			return false;
+	}
 	return true;
 }
 
