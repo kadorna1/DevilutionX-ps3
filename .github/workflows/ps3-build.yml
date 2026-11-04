@@ -41,7 +41,8 @@ jobs:
         run: |
           apt-get update
           apt-get install -y --no-install-recommends \
-            cmake ninja-build gettext ccache python3 file binutils
+            cmake ninja-build gettext ccache python3 file binutils \
+            autoconf automake libtool libtool-bin pkg-config git
           rm -rf /var/lib/apt/lists/*
 
       - name: Verify PS3 SDK and SDL2
