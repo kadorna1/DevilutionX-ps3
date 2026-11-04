@@ -538,11 +538,17 @@ bool SVidPlayBegin(const char *filename, int flags)
 bool SVidPlayContinue()
 {
 #ifdef __PS3__
+	const Uint32 continueStartTicks = SDL_GetTicks();
 	const uint32_t frameNumber = Smacker_GetCurrentFrameNum(SVidHandle);
 	const uint32_t continueIndex = SVidDebugContinueCount++;
 	const bool traceFrame = continueIndex < 3 || continueIndex % 60 == 0;
-	if (traceFrame)
-		LogInfo("PS3 FMV: continue #{} current frame {} begin", continueIndex, frameNumber);
+	if (traceFrame) {
+		const uint64_t entryTime = GetTicksSmk();
+		const bool lateAtEntry = entryTime >= SVidFrameEnd;
+		const uint64_t delta = lateAtEntry ? entryTime - SVidFrameEnd : SVidFrameEnd - entryTime;
+		LogInfo("PS3 FMV: continue #{} current frame {} begin; {} deadline by {} ms",
+		    continueIndex, frameNumber, lateAtEntry ? "past" : "before", TimeSmkToMs(delta));
+	}
 #else
 	const bool traceFrame = false;
 #endif
@@ -559,10 +565,23 @@ bool SVidPlayContinue()
 #endif
 
 	if (GetTicksSmk() >= SVidFrameEnd) {
+#ifdef __PS3__
+		if (traceFrame) {
+			const uint64_t lateBy = GetTicksSmk() - SVidFrameEnd;
+			LogInfo("PS3 FMV: frame {} skipped before audio; deadline exceeded by {} ms",
+			    frameNumber, TimeSmkToMs(lateBy));
+		}
+#endif
 #if defined(USE_SDL3) && !defined(NOSOUND)
 		if (ShouldPushAudioData()) SDL_ClearAudioStream(SVidAudioStream);
 #endif
-		return SVidLoadNextFrame(); // Skip video and audio if the system is to slow
+		const bool hasNextFrame = SVidLoadNextFrame();
+#ifdef __PS3__
+		if (traceFrame)
+			LogInfo("PS3 FMV: pre-audio skip recovery decoded next frame in {} ms",
+			    SDL_GetTicks() - continueStartTicks);
+#endif
+		return hasNextFrame; // Skip video and audio if the system is too slow
 	}
 
 #ifndef NOSOUND
@@ -595,30 +614,60 @@ bool SVidPlayContinue()
 #endif
 
 	if (GetTicksSmk() >= SVidFrameEnd) {
-		return SVidLoadNextFrame(); // Skip video if the system is to slow
+#ifdef __PS3__
+		if (traceFrame) {
+			const uint64_t lateBy = GetTicksSmk() - SVidFrameEnd;
+			LogInfo("PS3 FMV: frame {} skipped after audio; deadline exceeded by {} ms",
+			    frameNumber, TimeSmkToMs(lateBy));
+		}
+#endif
+		const bool hasNextFrame = SVidLoadNextFrame();
+#ifdef __PS3__
+		if (traceFrame)
+			LogInfo("PS3 FMV: post-audio skip recovery decoded next frame in {} ms",
+			    SDL_GetTicks() - continueStartTicks);
+#endif
+		return hasNextFrame; // Skip video when the system is too slow
 	}
 
 #ifdef __PS3__
 	if (traceFrame)
 		LogInfo("PS3 FMV: frame {} presentation begin", frameNumber);
+	const Uint32 presentationStartTicks = traceFrame ? SDL_GetTicks() : 0;
 #endif
 	if (!BlitFrame(traceFrame))
 		return false;
 #ifdef __PS3__
-	if (traceFrame)
-		LogInfo("PS3 FMV: frame {} presentation complete", frameNumber);
+	if (traceFrame) {
+		LogInfo("PS3 FMV: frame {} presentation complete in {} ms",
+		    frameNumber, SDL_GetTicks() - presentationStartTicks);
+	}
 #endif
 
 	const uint64_t now = GetTicksSmk();
 	if (now < SVidFrameEnd) {
-		SDL_Delay(static_cast<Uint32>(TimeSmkToMs(SVidFrameEnd - now))); // wait with next frame if the system is too fast
+		const Uint32 delayMs = static_cast<Uint32>(TimeSmkToMs(SVidFrameEnd - now));
+#ifdef __PS3__
+		if (traceFrame)
+			LogInfo("PS3 FMV: frame {} pacing wait {} ms", frameNumber, delayMs);
+#endif
+		SDL_Delay(delayMs); // wait with next frame if the system is too fast
+	} else {
+#ifdef __PS3__
+		if (traceFrame) {
+			const uint64_t lateBy = now - SVidFrameEnd;
+			LogInfo("PS3 FMV: frame {} completed presentation {} ms past deadline",
+			    frameNumber, TimeSmkToMs(lateBy));
+		}
+#endif
 	}
 
 	const bool hasNextFrame = SVidLoadNextFrame();
 #ifdef __PS3__
 	if (traceFrame) {
-		LogInfo("PS3 FMV: frame {} pacing complete; next frame {}",
-		    frameNumber, hasNextFrame ? "ready" : "end of movie");
+		LogInfo("PS3 FMV: frame {} pacing complete; next frame {}; continue total {} ms",
+		    frameNumber, hasNextFrame ? "ready" : "end of movie",
+		    SDL_GetTicks() - continueStartTicks);
 	}
 #endif
 	return hasNextFrame;
