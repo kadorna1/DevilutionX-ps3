@@ -2,7 +2,8 @@ diff --git a/src/render/psl1ght/SDL_PSL1GHTrender.c b/src/render/psl1ght/SDL_PSL
 index 3d5cf9b..0000000 100644
 --- a/src/render/psl1ght/SDL_PSL1GHTrender.c
 +++ b/src/render/psl1ght/SDL_PSL1GHTrender.c
-@@ -776,21 +776,24 @@ static void
+@@ -783,22 +783,25 @@
+ static void
  PSL1GHT_RenderPresent(SDL_Renderer * renderer)
  {
      PSL1GHT_RenderData *data = (PSL1GHT_RenderData *) renderer->driverdata;
@@ -27,11 +28,13 @@ index 3d5cf9b..0000000 100644
 -    gcmSetWaitFlip(data->context);
 -
 -    waitFlip();
--
+ 
      data->first_fb = false;
  
      // Update the flipping chain, if any
-@@ -913,4 +916,9 @@ PSL1GHT_DestroyRenderer(SDL_Renderer * renderer)
+     data->current_screen = (data->current_screen + 1) % 2;
+ }
+@@ -824,4 +827,9 @@
      PSL1GHT_RenderData *data = (PSL1GHT_RenderData *) renderer->driverdata;
      int i;
  
@@ -41,5 +44,3 @@ index 3d5cf9b..0000000 100644
 +    }
 +
      deprintf (1, "SDL_PSL1GHT_DestroyRenderer()\n");
- 
-     if (data) {
