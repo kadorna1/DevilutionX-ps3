@@ -234,7 +234,7 @@ void UpdatePalette()
 #endif
 }
 
-bool BlitFrame()
+bool BlitFrame(bool traceFrame)
 {
 #ifdef __PS3__
 	// Write palette-expanded pixels straight into the streaming RSX texture.
@@ -539,10 +539,12 @@ bool SVidPlayContinue()
 {
 #ifdef __PS3__
 	const uint32_t frameNumber = Smacker_GetCurrentFrameNum(SVidHandle);
-	const bool traceFrame = SVidDebugContinueCount < 3 || SVidDebugContinueCount % 60 == 0;
+	const uint32_t continueIndex = SVidDebugContinueCount++;
+	const bool traceFrame = continueIndex < 3 || continueIndex % 60 == 0;
 	if (traceFrame)
-		LogInfo("PS3 FMV: continue #{} current frame {} begin",
-		    SVidDebugContinueCount, frameNumber);
+		LogInfo("PS3 FMV: continue #{} current frame {} begin", continueIndex, frameNumber);
+#else
+	const bool traceFrame = false;
 #endif
 	if (Smacker_DidPaletteChange(SVidHandle)) {
 		UpdatePalette();
@@ -600,7 +602,7 @@ bool SVidPlayContinue()
 	if (traceFrame)
 		LogInfo("PS3 FMV: frame {} presentation begin", frameNumber);
 #endif
-	if (!BlitFrame())
+	if (!BlitFrame(traceFrame))
 		return false;
 #ifdef __PS3__
 	if (traceFrame)
@@ -618,7 +620,6 @@ bool SVidPlayContinue()
 		LogInfo("PS3 FMV: frame {} pacing complete; next frame {}",
 		    frameNumber, hasNextFrame ? "ready" : "end of movie");
 	}
-	++SVidDebugContinueCount;
 #endif
 	return hasNextFrame;
 }
