@@ -460,23 +460,25 @@ def main(argv: Sequence[str] | None = None) -> int:
         ffprobe = tool_path("ffprobe", args.ffprobe)
         if args.listfile is not None and not args.listfile.is_file():
             raise RuntimeError(f"Listfile does not exist: {args.listfile}")
+        output_dir = args.output_dir.resolve()
         if args.mpq is not None:
             archives = [path.resolve() for path in args.mpq]
         else:
             if not args.mpq_dir.is_dir():
                 raise RuntimeError(f"MPQ directory does not exist: {args.mpq_dir}")
+            source_dir = args.mpq_dir.resolve()
             archives = sorted(
                 (
                     path.resolve()
-                    for path in args.mpq_dir.rglob("*")
-                    if path.is_file() and path.suffix.lower() == ".mpq"
+                    for path in source_dir.rglob("*")
+                    if path.is_file()
+                    and path.suffix.lower() == ".mpq"
+                    and not path.resolve().is_relative_to(output_dir)
                 ),
                 key=lambda path: str(path).casefold(),
             )
         if not archives:
             raise RuntimeError("No MPQ archives found")
-
-        output_dir = args.output_dir.resolve()
         output_names: set[str] = set()
         processed: list[Path] = []
         total_movies = 0
