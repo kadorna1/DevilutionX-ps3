@@ -457,6 +457,7 @@ extern void PS3LuaRawBootLogStatus(int status, int callbackReturned);
   endif()
 
   file(WRITE "${_ps3_lua_do_source}" "${_ps3_lua_do_content}")
+  file(TOUCH "${_ps3_lua_do_source}")
 
 endif()
 
