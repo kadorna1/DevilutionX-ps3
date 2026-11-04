@@ -104,8 +104,12 @@ import sys
 
 source_path = Path(sys.argv[1])
 source = source_path.read_bytes().decode("utf-8")
-start_marker = "static int\\nPSL1GHT_CreateTexture(SDL_Renderer * renderer, SDL_Texture * texture)\\n{"
-end_marker = "\\nstatic int\\nPSL1GHT_UpdateTexture"
+start_marker = "\n".join([
+    "static int",
+    "PSL1GHT_CreateTexture(SDL_Renderer * renderer, SDL_Texture * texture)",
+    "{",
+])
+end_marker = "\n".join(["", "static int", "PSL1GHT_UpdateTexture"])
 start = source.find(start_marker)
 end = source.find(end_marker, start + len(start_marker))
 if start < 0 or end < 0:
