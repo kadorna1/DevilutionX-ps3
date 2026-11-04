@@ -6,6 +6,7 @@
 #include "engine/dx.h"
 
 #include <cstdint>
+#include <cstring>
 
 #ifdef USE_SDL3
 #include <SDL3/SDL_rect.h>
@@ -364,22 +365,31 @@ bool RenderIndexedVideoFrame(const Uint8 *pixels, int width, int height, const S
 	int textureHeight = 0;
 	if (SDL_QueryTexture(texture.get(), &textureFormat, nullptr, &textureWidth, &textureHeight) < 0
 	    || textureWidth != width || textureHeight != height
-	    || SDL_BYTESPERPIXEL(textureFormat) != sizeof(Uint32)) {
+	    || SDL_BYTESPERPIXEL(textureFormat) != static_cast<int>(sizeof(Uint32))) {
 		LogError("PS3 FMV texture does not match indexed frame dimensions {}x{}", width, height);
 		return false;
 	}
 
-	SDL_PixelFormat *pixelFormat = SDL_AllocFormat(textureFormat);
-	if (pixelFormat == nullptr) {
-		LogError("PS3 FMV could not allocate texture pixel format: {}", SDL_GetError());
-		return false;
-	}
+	static Uint32 cachedFormat = SDL_PIXELFORMAT_UNKNOWN;
+	static SDL_Color cachedColors[256] {};
+	static Uint32 mappedPalette[256] {};
+	static bool paletteCacheValid = false;
+	if (!paletteCacheValid || cachedFormat != textureFormat
+	    || std::memcmp(cachedColors, palette, sizeof(cachedColors)) != 0) {
+		SDL_PixelFormat *pixelFormat = SDL_AllocFormat(textureFormat);
+		if (pixelFormat == nullptr) {
+			LogError("PS3 FMV could not allocate texture pixel format: {}", SDL_GetError());
+			return false;
+		}
 
-	Uint32 mappedPalette[256];
-	for (unsigned int i = 0; i < 256; ++i) {
-		mappedPalette[i] = SDL_MapRGBA(pixelFormat, palette[i].r, palette[i].g, palette[i].b, SDL_ALPHA_OPAQUE);
+		for (unsigned int i = 0; i < 256; ++i) {
+			mappedPalette[i] = SDL_MapRGBA(pixelFormat, palette[i].r, palette[i].g, palette[i].b, SDL_ALPHA_OPAQUE);
+		}
+		SDL_FreeFormat(pixelFormat);
+		std::memcpy(cachedColors, palette, sizeof(cachedColors));
+		cachedFormat = textureFormat;
+		paletteCacheValid = true;
 	}
-	SDL_FreeFormat(pixelFormat);
 
 	const SDL_Rect fullFrameRect { 0, 0, width, height };
 	void *lockedPixels = nullptr;
