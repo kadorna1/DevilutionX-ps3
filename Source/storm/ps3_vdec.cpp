@@ -31,7 +31,6 @@
 #include "engine/dx.h"
 #include "engine/sound.h"
 #include "options.h"
-#include "storm/ps3_vdec.h"
 #include "utils/display.h"
 #include "utils/log.hpp"
 #include "utils/sdl_wrap.h"
