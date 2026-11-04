@@ -24,6 +24,9 @@
 #include "headless_mode.hpp"
 #include "hwcursor.hpp"
 #include "storm/storm_svid.h"
+#ifdef __PS3__
+#include "storm/ps3_vdec.h"
+#endif
 #include "utils/display.h"
 #include "utils/log.hpp"
 #include "utils/sdl_compat.h"
@@ -54,7 +57,31 @@ void play_movie(const char *pszMovie, bool userCanClose)
 		SetHardwareCursorVisible(false);
 	}
 
-	if (SVidPlayBegin(pszMovie, loop_movie ? 0x100C0808 : 0x10280808)) {
+	const int movieFlags = loop_movie ? 0x100C0808 : 0x10280808;
+#ifdef __PS3__
+	const bool usingVdec = PS3VdecMovieBegin(pszMovie, movieFlags);
+#else
+	constexpr bool usingVdec = false;
+#endif
+	if (usingVdec || SVidPlayBegin(pszMovie, movieFlags)) {
+		auto EndMoviePlayback = [&]() {
+#ifdef __PS3__
+			if (usingVdec)
+				PS3VdecMovieEnd();
+			else
+#endif
+				SVidPlayEnd();
+		};
+		auto ContinueMoviePlayback = [&]() {
+#ifdef __PS3__
+			return usingVdec ? PS3VdecMovieContinue() : SVidPlayContinue();
+#else
+			return SVidPlayContinue();
+#endif
+		};
+#ifdef __PS3__
+		LogInfo("PS3 movie: playback backend={}", usingVdec ? "Cell VDEC H.264" : "Smacker software decoder");
+#endif
 		SDL_Event event;
 		uint16_t modState;
 		while (movie_playing) {
@@ -110,7 +137,7 @@ void play_movie(const char *pszMovie, bool userCanClose)
 					break;
 #endif
 				case SDL_EVENT_QUIT:
-					SVidPlayEnd();
+					EndMoviePlayback();
 					diablo_quit(0);
 				default:
 					break;
@@ -118,16 +145,16 @@ void play_movie(const char *pszMovie, bool userCanClose)
 			}
 			// A skip or quit event can clear movie_playing inside FetchMessage().
 			// Do not decode, queue audio for, or present one extra frame afterward.
-			if (!movie_playing || !SVidPlayContinue())
+			if (!movie_playing || !ContinueMoviePlayback())
 				break;
 		}
 #ifdef __PS3__
 		LogInfo("PS3 movie: playback loop exited movie_playing={}", movie_playing);
-		LogInfo("PS3 movie: SVidPlayEnd begin");
+		LogInfo("PS3 movie: playback backend shutdown begin");
 #endif
-		SVidPlayEnd();
+		EndMoviePlayback();
 #ifdef __PS3__
-		LogInfo("PS3 movie: SVidPlayEnd returned");
+		LogInfo("PS3 movie: playback backend shutdown complete");
 #endif
 	}
 
