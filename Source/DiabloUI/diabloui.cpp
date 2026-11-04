@@ -60,6 +60,7 @@
 #include "utils/sdl_compat.h"
 #include "utils/sdl_geometry.h"
 #include "utils/str_cat.hpp"
+#include "utils/log.hpp"
 #include "utils/ui_fwd.h"
 #include "utils/utf8.hpp"
 
@@ -145,18 +146,44 @@ void StartUiFadeIn()
 
 void UiUpdateFadePalette()
 {
-	if (fadeValue == 256) return;
+#ifdef __PS3__
+	LogInfo("PS3 title fade: UiUpdateFadePalette entered value={} tc={}", fadeValue, fadeTc);
+#endif
+	if (fadeValue == 256) {
+#ifdef __PS3__
+		LogInfo("PS3 title fade: palette already fully faded in");
+#endif
+		return;
+	}
 	if (fadeValue == 0 && fadeTc == 0) {
 		// Start the fade-in.
+#ifdef __PS3__
+		LogInfo("PS3 title fade: initial SDL_GetTicks begin");
+#endif
 		fadeTc = SDL_GetTicks();
+#ifdef __PS3__
+		LogInfo("PS3 title fade: initial SDL_GetTicks complete value={}", fadeTc);
+#endif
 		fadeValue = 0;
+#ifdef __PS3__
+		LogInfo("PS3 title fade: BlackPalette begin");
+#endif
 		BlackPalette();
+#ifdef __PS3__
+		LogInfo("PS3 title fade: BlackPalette complete");
+#endif
 		// We can skip hardware cursor update for fade level 0 (everything is black).
 		return;
 	}
 
 	const int prevFadeValue = fadeValue;
+#ifdef __PS3__
+	LogInfo("PS3 title fade: elapsed SDL_GetTicks begin");
+#endif
 	fadeValue = static_cast<int>((SDL_GetTicks() - fadeTc) / 2.083); // 32 frames @ 60hz
+#ifdef __PS3__
+	LogInfo("PS3 title fade: elapsed SDL_GetTicks complete value={}", fadeValue);
+#endif
 	if (fadeValue == prevFadeValue) return;
 
 	if (fadeValue >= 256) {
@@ -164,7 +191,13 @@ void UiUpdateFadePalette()
 		fadeValue = 256;
 		fadeTc = 0;
 		ApplyGlobalBrightness(system_palette.data(), logical_palette.data());
+#ifdef __PS3__
+		LogInfo("PS3 title fade: final SystemPaletteUpdated begin");
+#endif
 		SystemPaletteUpdated();
+#ifdef __PS3__
+		LogInfo("PS3 title fade: final SystemPaletteUpdated complete");
+#endif
 		if (IsHardwareCursor()) ReinitializeHardwareCursor();
 		return;
 	}
@@ -173,7 +206,13 @@ void UiUpdateFadePalette()
 	ApplyGlobalBrightness(palette, logical_palette.data());
 	ApplyFadeLevel(fadeValue, system_palette.data(), palette);
 
+#ifdef __PS3__
+	LogInfo("PS3 title fade: intermediate SystemPaletteUpdated begin fade={}", fadeValue);
+#endif
 	SystemPaletteUpdated();
+#ifdef __PS3__
+	LogInfo("PS3 title fade: intermediate SystemPaletteUpdated complete");
+#endif
 	if (IsHardwareCursor()) ReinitializeHardwareCursor();
 }
 
@@ -796,12 +835,43 @@ void UiAddLogo(std::vector<std::unique_ptr<UiItemBase>> *vecDialog, int y)
 
 void UiFadeIn()
 {
-	if (HeadlessMode) return;
-	UiUpdateFadePalette();
-	if (DiabloUiSurface() == PalSurface) {
-		BltFast(nullptr, nullptr);
+#ifdef __PS3__
+	LogInfo("PS3 title fade: UiFadeIn entered");
+#endif
+	if (HeadlessMode) {
+#ifdef __PS3__
+		LogInfo("PS3 title fade: skipped in headless mode");
+#endif
+		return;
 	}
+#ifdef __PS3__
+	LogInfo("PS3 title fade: UiUpdateFadePalette begin");
+#endif
+	UiUpdateFadePalette();
+#ifdef __PS3__
+	LogInfo("PS3 title fade: UiUpdateFadePalette complete");
+	LogInfo("PS3 title fade: DiabloUiSurface comparison begin");
+#endif
+	const bool uiSurfaceIsPaletteSurface = DiabloUiSurface() == PalSurface;
+#ifdef __PS3__
+	LogInfo("PS3 title fade: DiabloUiSurface comparison complete match={}", uiSurfaceIsPaletteSurface);
+#endif
+	if (uiSurfaceIsPaletteSurface) {
+#ifdef __PS3__
+		LogInfo("PS3 title fade: BltFast begin");
+#endif
+		BltFast(nullptr, nullptr);
+#ifdef __PS3__
+		LogInfo("PS3 title fade: BltFast complete");
+#endif
+	}
+#ifdef __PS3__
+	LogInfo("PS3 title fade: RenderPresent begin");
+#endif
 	RenderPresent();
+#ifdef __PS3__
+	LogInfo("PS3 title fade: RenderPresent complete");
+#endif
 }
 
 namespace {
