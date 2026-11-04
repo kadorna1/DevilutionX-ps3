@@ -25,6 +25,7 @@
 #include "hwcursor.hpp"
 #include "storm/storm_svid.h"
 #include "utils/display.h"
+#include "utils/log.hpp"
 #include "utils/sdl_compat.h"
 
 namespace devilution {
@@ -110,10 +111,23 @@ void play_movie(const char *pszMovie, bool userCanClose)
 			if (!movie_playing || !SVidPlayContinue())
 				break;
 		}
+#ifdef __PS3__
+		LogInfo("PS3 movie: playback loop exited movie_playing={}", movie_playing);
+		LogInfo("PS3 movie: SVidPlayEnd begin");
+#endif
 		SVidPlayEnd();
+#ifdef __PS3__
+		LogInfo("PS3 movie: SVidPlayEnd returned");
+#endif
 	}
 
+#ifdef __PS3__
+	LogInfo("PS3 movie: re-enable music begin");
+#endif
 	sound_disable_music(false);
+#ifdef __PS3__
+	LogInfo("PS3 movie: re-enable music complete");
+#endif
 
 	movie_playing = false;
 
@@ -125,8 +139,17 @@ void play_movie(const char *pszMovie, bool userCanClose)
 #else
 	SDL_GetMouseState(&MousePosition.x, &MousePosition.y);
 #endif
+#ifdef __PS3__
+	LogInfo("PS3 movie: mouse state restored");
+#endif
 	OutputToLogical(&MousePosition.x, &MousePosition.y);
+#ifdef __PS3__
+	LogInfo("PS3 movie: logical mouse coordinates restored");
+#endif
 	InitBackbufferState();
+#ifdef __PS3__
+	LogInfo("PS3 movie: play_movie returning");
+#endif
 }
 
 void PlayInGameMovie(const char *pszMovie)

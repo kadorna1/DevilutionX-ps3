@@ -651,9 +651,10 @@ bool SVidPlayContinue()
 #ifdef __PS3__
 	if (traceFrame) {
 		const Uint32 decodeMs = SDL_GetTicks() - decodeStartTicks;
-		const int64_t lateAfterPresentMs = GetTicksSmk() >= frameDeadline
-		    ? static_cast<int64_t>(TimeSmkToMs(GetTicksSmk() - frameDeadline))
-		    : -static_cast<int64_t>(TimeSmkToMs(frameDeadline - GetTicksSmk()));
+		const uint64_t afterPresentTime = GetTicksSmk();
+		const int64_t lateAfterPresentMs = afterPresentTime >= frameDeadline
+		    ? static_cast<int64_t>(TimeSmkToMs(afterPresentTime - frameDeadline))
+		    : -static_cast<int64_t>(TimeSmkToMs(frameDeadline - afterPresentTime));
 		LogInfo("PS3 FMV: frame {} timing: deadline_offset={} ms late_after={} ms palette={} ms audio={} ms presentation={} ms [setup={} lock={} expand={} copy={} present={}] wait={} ms decode_next={} ms total={} ms next={}",
 		    frameNumber, deadlineOffsetMs, lateAfterPresentMs, paletteMs, audioMs, presentationMs,
 		    renderStats.textureSetupMs, renderStats.textureLockMs, renderStats.pixelExpandMs,
@@ -666,7 +667,13 @@ bool SVidPlayContinue()
 
 void SVidPlayEnd()
 {
+#ifdef __PS3__
+	LogInfo("PS3 FMV END: begin handle_valid={}", SVidHandle.isValid);
+#endif
 #ifndef NOSOUND
+#ifdef __PS3__
+	LogInfo("PS3 FMV END: audio stream shutdown begin active={}", static_cast<bool>(SVidAudioStream));
+#endif
 	if (SVidAudioStream) {
 #ifdef USE_SDL3
 		SDL_DestroyAudioStream(SVidAudioStream);
@@ -681,18 +688,39 @@ void SVidPlayEnd()
 #endif
 	}
 	SVidAudioBuffer = nullptr;
+#ifdef __PS3__
+	LogInfo("PS3 FMV END: audio stream shutdown complete");
+#endif
 #endif
 
+#ifdef __PS3__
+	LogInfo("PS3 FMV END: decoder close begin valid={}", SVidHandle.isValid);
+#endif
 	if (SVidHandle.isValid)
 		Smacker_Close(SVidHandle);
+#ifdef __PS3__
+	LogInfo("PS3 FMV END: decoder close complete valid={}", SVidHandle.isValid);
+#endif
 
+#ifdef __PS3__
+	LogInfo("PS3 FMV END: release palette/surface/framebuffer begin");
+#endif
 	SVidPalette = nullptr;
 	SVidSurface = nullptr;
 	SVidFrameBuffer = nullptr;
+#ifdef __PS3__
+	LogInfo("PS3 FMV END: release palette/surface/framebuffer complete");
+#endif
 
 #ifndef USE_SDL1
 	if (renderer != nullptr) {
+#ifdef __PS3__
+		LogInfo("PS3 FMV END: restore game texture begin {}x{}", gnScreenWidth, gnScreenHeight);
+#endif
 		texture = SDLWrap::CreateTexture(renderer, DEVILUTIONX_DISPLAY_TEXTURE_FORMAT, SDL_TEXTUREACCESS_STREAMING, gnScreenWidth, gnScreenHeight);
+#ifdef __PS3__
+		LogInfo("PS3 FMV END: restore game texture complete valid={}", texture != nullptr);
+#endif
 		if (
 #ifdef USE_SDL3
 		    !SDL_SetRenderLogicalPresentation(renderer, gnScreenWidth, gnScreenHeight,
@@ -722,6 +750,9 @@ void SVidPlayEnd()
 		SetVideoModeToPrimary(IsFullScreen(), gnScreenWidth, gnScreenHeight);
 		IsSVidVideoMode = false;
 	}
+#endif
+#ifdef __PS3__
+	LogInfo("PS3 FMV END: complete");
 #endif
 }
 
