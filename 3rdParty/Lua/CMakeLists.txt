@@ -102,12 +102,6 @@ extern void PS3LuaRawBootLogStatus(int status);
     # upstream file. A cached instrumented file already contains them.
     if(NOT _ps3_lua_do_content MATCHES "Lua core: rawrunprotected handler installed")
       string(REPLACE
-        [=[  L->errorJmp = &lj;]=]
-        [=[  L->errorJmp = &lj;
-  PS3_LUA_CORE_TRACE("Lua core: rawrunprotected handler installed");]=]
-        _ps3_lua_do_content "${_ps3_lua_do_content}")
-
-      string(REPLACE
         [=[    (*f)(L, ud);]=]
         [=[    PS3_LUA_CORE_TRACE("Lua core: protected callback body entered");
     (*f)(L, ud);
@@ -294,16 +288,34 @@ extern void PS3LuaRawBootLogStatus(int status, int callbackReturned);
       _ps3_lua_do_content "${_ps3_lua_do_content}")
   endif()
 
-  # Record the initialized status before entering the protected callback.
-  if(NOT _ps3_lua_do_content MATCHES "PS3_LUA_CORE_TRACE_STATUS\\(lj.status, -2\\)")
-    string(REPLACE
-      [=[  lj.status = LUA_OK;]=]
-      [=[  lj.status = LUA_OK;
-#ifdef __PS3__
-  PS3_LUA_CORE_TRACE_STATUS(lj.status, -2); /* initial status; -2 identifies this probe */
-#endif]=]
-      _ps3_lua_do_content "${_ps3_lua_do_content}")
-  endif()
+  # Do not call the LV2 logger between setting lj.status and setjmp().
+  # The first post-setjmp probe at -6 determines whether the jump setup changed it.
+  string(REPLACE
+    [=[  PS3_LUA_CORE_TRACE_STATUS(lj.status, -2); /* initial status; -2 identifies this probe */]=]
+    [=[]=]
+    _ps3_lua_do_content "${_ps3_lua_do_content}")
+  string(REPLACE
+    [=[  PS3_LUA_CORE_TRACE("Lua core: rawrunprotected handler installed");]=]
+    [=[]=]
+    _ps3_lua_do_content "${_ps3_lua_do_content}")
+
+  # Keep exactly one final status report. Older cached sources accumulated
+  # duplicate probes as CMake reconfigured the FetchContent build tree.
+  string(REPLACE
+    [=[  PS3_LUA_CORE_TRACE_STATUS(lj.status, ps3_callback_returned);]=]
+    [=[]=]
+    _ps3_lua_do_content "${_ps3_lua_do_content}")
+  string(REPLACE
+    [=[#ifdef __PS3__
+#endif
+]=]
+    [=[]=]
+    _ps3_lua_do_content "${_ps3_lua_do_content}")
+  string(REPLACE
+    [=[  return lj.status;]=]
+    [=[  PS3_LUA_CORE_TRACE_STATUS(lj.status, ps3_callback_returned);
+  return lj.status;]=]
+    _ps3_lua_do_content "${_ps3_lua_do_content}")
 
   # Record every explicit Lua throw that writes to the active protected call.
   if(NOT _ps3_lua_do_content MATCHES "PS3_LUA_CORE_TRACE_STATUS\\(errcode, -1\\)")
