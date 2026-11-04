@@ -31,8 +31,17 @@ void Blit(SDL_Surface *src, SDL_Rect *srcRect, SDL_Rect *dstRect);
 void RenderPresent();
 
 #ifdef __PS3__
+/** Timing checkpoints for direct indexed Smacker frame presentation. */
+struct PS3FMVRenderStats {
+	Uint32 textureSetupMs = 0;
+	Uint32 textureLockMs = 0;
+	Uint32 pixelExpandMs = 0;
+	Uint32 renderCopyMs = 0;
+	Uint32 renderPresentMs = 0;
+};
+
 /** Upload and present an indexed Smacker frame directly through the RSX texture. */
-bool RenderIndexedVideoFrame(const Uint8 *pixels, int width, int height, const SDL_Color *palette, bool traceFrame);
+bool RenderIndexedVideoFrame(const Uint8 *pixels, int width, int height, const SDL_Color *palette, PS3FMVRenderStats *stats);
 #endif
 
 } // namespace devilution
