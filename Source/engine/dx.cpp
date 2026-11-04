@@ -495,6 +495,57 @@ bool RenderIndexedVideoFrame(const Uint8 *pixels, int width, int height, const S
 
 	return true;
 }
+
+bool RenderDecodedVideoFrame(const Uint8 *pixels, int width, int height, int sourcePitch)
+{
+	if (renderer == nullptr || texture == nullptr || pixels == nullptr || width <= 0 || height <= 0
+	    || sourcePitch < width * static_cast<int>(sizeof(Uint32))) {
+		LogError("PS3 VDEC: invalid renderer, texture, decoded frame, or source pitch");
+		return false;
+	}
+
+	Uint32 textureFormat = SDL_PIXELFORMAT_UNKNOWN;
+	int textureWidth = 0;
+	int textureHeight = 0;
+	if (SDL_QueryTexture(texture.get(), &textureFormat, nullptr, &textureWidth, &textureHeight) < 0
+	    || textureWidth != width || textureHeight != height
+	    || SDL_BYTESPERPIXEL(textureFormat) != static_cast<int>(sizeof(Uint32))) {
+		LogError("PS3 VDEC: output texture does not match decoded frame dimensions {}x{}", width, height);
+		return false;
+	}
+
+	const SDL_Rect fullFrameRect { 0, 0, width, height };
+	void *lockedPixels = nullptr;
+	int lockedPitch = 0;
+	if (SDL_LockTexture(texture.get(), &fullFrameRect, &lockedPixels, &lockedPitch) < 0) {
+		LogError("PS3 VDEC: SDL_LockTexture failed: {}", SDL_GetError());
+		return false;
+	}
+	const size_t rowBytes = static_cast<size_t>(width) * sizeof(Uint32);
+	if (lockedPixels == nullptr || lockedPitch < 0 || static_cast<size_t>(lockedPitch) < rowBytes) {
+		SDL_UnlockTexture(texture.get());
+		LogError("PS3 VDEC: RSX texture pitch is too small for {} pixels", width);
+		return false;
+	}
+
+	const Uint8 *source = pixels;
+	auto *destination = static_cast<Uint8 *>(lockedPixels);
+	for (int y = 0; y < height; ++y) {
+		std::memcpy(destination, source, rowBytes);
+		source += sourcePitch;
+		destination += lockedPitch;
+	}
+	SDL_UnlockTexture(texture.get());
+
+	if (SDL_SetRenderDrawColor(renderer, 0, 0, 0, SDL_ALPHA_OPAQUE) < 0
+	    || SDL_RenderClear(renderer) < 0
+	    || SDL_RenderCopy(renderer, texture.get(), nullptr, nullptr) < 0) {
+		LogError("PS3 VDEC: RSX presentation failed: {}", SDL_GetError());
+		return false;
+	}
+	SDL_RenderPresent(renderer);
+	return true;
+}
 #endif
 
 } // namespace devilution
