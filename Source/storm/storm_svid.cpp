@@ -226,7 +226,7 @@ bool BlitFrame()
 	// Write palette-expanded pixels straight into the streaming RSX texture.
 	// This avoids an indexed SDL surface blit followed by a second full-frame
 	// software-surface-to-texture copy in RenderPresent().
-	if (RenderIndexedVideoFrame(SVidFrameBuffer.get(), static_cast<int>(SVidWidth), static_cast<int>(SVidHeight), SVidPalette->colors))
+	if (renderer != nullptr && RenderIndexedVideoFrame(SVidFrameBuffer.get(), static_cast<int>(SVidWidth), static_cast<int>(SVidHeight), SVidPalette->colors))
 		return true;
 #endif
 #ifndef USE_SDL1
