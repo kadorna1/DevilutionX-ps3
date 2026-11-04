@@ -350,4 +350,71 @@ void RenderPresent()
 #endif
 }
 
+
+#ifdef __PS3__
+bool RenderIndexedVideoFrame(const Uint8 *pixels, int width, int height, const SDL_Color *palette)
+{
+	if (renderer == nullptr || texture == nullptr || pixels == nullptr || palette == nullptr || width <= 0 || height <= 0) {
+		LogError("PS3 FMV direct presentation has invalid renderer, texture, or frame data");
+		return false;
+	}
+
+	Uint32 textureFormat = SDL_PIXELFORMAT_UNKNOWN;
+	int textureWidth = 0;
+	int textureHeight = 0;
+	if (SDL_QueryTexture(texture.get(), &textureFormat, nullptr, &textureWidth, &textureHeight) < 0
+	    || textureWidth != width || textureHeight != height
+	    || SDL_BYTESPERPIXEL(textureFormat) != sizeof(Uint32)) {
+		LogError("PS3 FMV texture does not match indexed frame dimensions {}x{}", width, height);
+		return false;
+	}
+
+	SDL_PixelFormat *pixelFormat = SDL_AllocFormat(textureFormat);
+	if (pixelFormat == nullptr) {
+		LogError("PS3 FMV could not allocate texture pixel format: {}", SDL_GetError());
+		return false;
+	}
+
+	Uint32 mappedPalette[256];
+	for (unsigned int i = 0; i < 256; ++i) {
+		mappedPalette[i] = SDL_MapRGBA(pixelFormat, palette[i].r, palette[i].g, palette[i].b, SDL_ALPHA_OPAQUE);
+	}
+	SDL_FreeFormat(pixelFormat);
+
+	void *lockedPixels = nullptr;
+	int lockedPitch = 0;
+	if (SDL_LockTexture(texture.get(), nullptr, &lockedPixels, &lockedPitch) < 0) {
+		LogError("PS3 FMV could not lock RSX texture: {}", SDL_GetError());
+		return false;
+	}
+
+	const size_t rowBytes = static_cast<size_t>(width) * sizeof(Uint32);
+	if (lockedPixels == nullptr || lockedPitch < 0 || static_cast<size_t>(lockedPitch) < rowBytes) {
+		SDL_UnlockTexture(texture.get());
+		LogError("PS3 FMV RSX texture pitch is too small for {} pixels", width);
+		return false;
+	}
+
+	const Uint8 *source = pixels;
+	for (int y = 0; y < height; ++y) {
+		auto *destination = reinterpret_cast<Uint32 *>(
+		    static_cast<Uint8 *>(lockedPixels) + static_cast<size_t>(y) * static_cast<size_t>(lockedPitch));
+		for (int x = 0; x < width; ++x) {
+			destination[x] = mappedPalette[source[x]];
+		}
+		source += width;
+	}
+	SDL_UnlockTexture(texture.get());
+
+	if (SDL_SetRenderDrawColor(renderer, 0, 0, 0, SDL_ALPHA_OPAQUE) < 0
+	    || SDL_RenderClear(renderer) < 0
+	    || SDL_RenderCopy(renderer, texture.get(), nullptr, nullptr) < 0) {
+		LogError("PS3 FMV RSX presentation failed: {}", SDL_GetError());
+		return false;
+	}
+	SDL_RenderPresent(renderer);
+	return true;
+}
+#endif
+
 } // namespace devilution
