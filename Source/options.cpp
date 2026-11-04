@@ -176,10 +176,22 @@ void SaveIni()
 		return;
 	}
 	const std::string newContents = ini->serialize();
+#ifdef __PS3__
+	LogInfo("PS3 config save: serialized diablo.ini ({} bytes)", newContents.size());
+#endif
 	if (out.Write(newContents.data(), newContents.size())) {
 		ini->markAsUnchanged();
+#ifdef __PS3__
+		LogInfo("PS3 config save: diablo.ini marked unchanged after write");
+#endif
 	}
+#ifdef __PS3__
+	LogInfo("PS3 config save: entering diablo.ini close");
+#endif
 	out.Close();
+#ifdef __PS3__
+	LogInfo("PS3 config save: diablo.ini close returned");
+#endif
 }
 
 #if SDL_VERSION_ATLEAST(2, 0, 0)
@@ -277,6 +289,9 @@ void SaveOptions()
 #endif
 
 	SaveIni();
+#ifdef __PS3__
+	LogInfo("PS3 config save: SaveOptions returned");
+#endif
 }
 
 std::string_view OptionEntryBase::GetName() const
