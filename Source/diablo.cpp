@@ -1336,29 +1336,66 @@ void DiabloInit()
 
 void DiabloSplash()
 {
-	if (!gbShowIntro)
+#ifdef __PS3__
+	LogInfo("PS3 splash: entered showIntro={} hellfire={} splash={}", gbShowIntro, gbIsHellfire, static_cast<int>(*GetOptions().StartUp.splash));
+#endif
+	if (!gbShowIntro) {
+#ifdef __PS3__
+		LogInfo("PS3 splash: skipped because showIntro is false");
+#endif
 		return;
+	}
 
-	if (*GetOptions().StartUp.splash == StartUpSplash::LogoAndTitleDialog)
+	if (*GetOptions().StartUp.splash == StartUpSplash::LogoAndTitleDialog) {
+#ifdef __PS3__
+		LogInfo("PS3 splash: logo movie begin");
+#endif
 		play_movie("gendata\\logo.smk", true);
+#ifdef __PS3__
+		LogInfo("PS3 splash: logo movie returned");
+#endif
+	}
 
 	auto &intro = gbIsHellfire ? GetOptions().StartUp.hellfireIntro : GetOptions().StartUp.diabloIntro;
-
+#ifdef __PS3__
+	LogInfo("PS3 splash: intro option={}", static_cast<int>(*intro));
+#endif
 	if (*intro != StartUpIntro::Off) {
+#ifdef __PS3__
+		LogInfo("PS3 splash: intro movie begin hellfire={}", gbIsHellfire);
+#endif
 		if (gbIsHellfire)
 			play_movie("gendata\\Hellfire.smk", true);
 		else
 			play_movie("gendata\\diablo1.smk", true);
+#ifdef __PS3__
+		LogInfo("PS3 splash: intro movie returned");
+#endif
 		if (*intro == StartUpIntro::Once) {
+#ifdef __PS3__
+			LogInfo("PS3 splash: disabling one-time intro begin");
+#endif
 			intro.SetValue(StartUpIntro::Off);
 			if (!demo::IsRunning()) SaveOptions();
+#ifdef __PS3__
+			LogInfo("PS3 splash: disabling one-time intro complete");
+#endif
 		}
 	}
 
-	if (IsAnyOf(*GetOptions().StartUp.splash, StartUpSplash::TitleDialog, StartUpSplash::LogoAndTitleDialog))
+	if (IsAnyOf(*GetOptions().StartUp.splash, StartUpSplash::TitleDialog, StartUpSplash::LogoAndTitleDialog)) {
+#ifdef __PS3__
+		LogInfo("PS3 splash: title dialog begin");
+#endif
 		UiTitleDialog();
+#ifdef __PS3__
+		LogInfo("PS3 splash: title dialog returned");
+#endif
+	}
+#ifdef __PS3__
+	LogInfo("PS3 splash: complete");
+#endif
 }
-
 void DiabloDeinit()
 {
 	FreeItemGFX();
