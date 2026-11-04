@@ -95,7 +95,7 @@ PSL1GHT_FlipHandler(const u32 head)
 /*
  * The renderer allocates two scanout buffers. Before drawing into the next
  * one, wait for the flip of the previous buffer to complete. This is
- * callback-driven: gcmGetFlipStatus() polling was observed to report an
+ * callback-driven flip completion was observed to be more reliable than status polling on
  * immediate completion on real PS3 hardware in another PSL1GHT renderer.
  */
 static SDL_bool
