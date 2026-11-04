@@ -48,6 +48,12 @@ if [[ "$actual_blob" != "$SDL2_RENDERER_BLOB" ]]; then
   exit 1
 fi
 
+# The restored build cache may contain a working tree left modified by an
+# earlier patch attempt. Start from the exact, blob-verified upstream files
+# every time, then apply the complete patch stack below. This keeps the patch
+# guards deterministic without discarding the cached Makefile or object files.
+git -C "$SDL2_SOURCE" restore --source=HEAD --worktree -- "$SDL2_RENDERER" "$SDL2_JOYSTICK"
+
 if ! grep -Fq "Wait for the previous flip from the PPU" "$SDL2_SOURCE/$SDL2_RENDERER"; then
   git -C "$SDL2_SOURCE" apply --check "$PATCH_FILE"
   git -C "$SDL2_SOURCE" apply "$PATCH_FILE"
