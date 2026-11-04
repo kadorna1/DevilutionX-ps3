@@ -49,10 +49,28 @@ if [[ "$actual_blob" != "$SDL2_RENDERER_BLOB" ]]; then
 fi
 
 # The restored build cache may contain a working tree left modified by an
-# earlier patch attempt. Start from the exact, blob-verified upstream files
-# every time, then apply the complete patch stack below. This keeps the patch
-# guards deterministic without discarding the cached Makefile or object files.
-git -C "$SDL2_SOURCE" restore --source=HEAD --worktree -- "$SDL2_RENDERER" "$SDL2_JOYSTICK"
+# earlier patch attempt. Materialize the exact raw Git blobs rather than using
+# checkout/restore filters, so line endings and cached working-tree settings
+# cannot make a valid patch appear not to apply. This preserves Makefiles and
+# object files while resetting only the two source files patched below.
+git -C "$SDL2_SOURCE" show "HEAD:$SDL2_RENDERER" > "$SDL2_SOURCE/$SDL2_RENDERER"
+git -C "$SDL2_SOURCE" show "HEAD:$SDL2_JOYSTICK" > "$SDL2_SOURCE/$SDL2_JOYSTICK"
+
+renderer_worktree_blob="$(git -C "$SDL2_SOURCE" hash-object -- "$SDL2_SOURCE/$SDL2_RENDERER")"
+joystick_worktree_blob="$(git -C "$SDL2_SOURCE" hash-object -- "$SDL2_SOURCE/$SDL2_JOYSTICK")"
+if [[ "$renderer_worktree_blob" != "$SDL2_RENDERER_BLOB" ]]; then
+  echo "error: SDL2 renderer working copy does not match its verified Git blob" >&2
+  echo "expected blob: $SDL2_RENDERER_BLOB" >&2
+  echo "actual blob:   $renderer_worktree_blob" >&2
+  exit 1
+fi
+if [[ "$joystick_worktree_blob" != "$SDL2_JOYSTICK_BLOB" ]]; then
+  echo "error: SDL2 joystick working copy does not match its verified Git blob" >&2
+  echo "expected blob: $SDL2_JOYSTICK_BLOB" >&2
+  echo "actual blob:   $joystick_worktree_blob" >&2
+  exit 1
+fi
+echo "Verified clean raw SDL2 renderer and joystick source blobs"
 
 if ! grep -Fq "Wait for the previous flip from the PPU" "$SDL2_SOURCE/$SDL2_RENDERER"; then
   git -C "$SDL2_SOURCE" apply --check "$PATCH_FILE"
