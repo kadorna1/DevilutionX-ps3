@@ -2,7 +2,7 @@ diff --git a/src/render/psl1ght/SDL_PSL1GHTrender.c b/src/render/psl1ght/SDL_PSL
 index 3d5cf9b..0000000 100644
 --- a/src/render/psl1ght/SDL_PSL1GHTrender.c
 +++ b/src/render/psl1ght/SDL_PSL1GHTrender.c
-@@ -776,22 +776,25 @@ static void
+@@ -776,21 +776,24 @@ static void
  PSL1GHT_RenderPresent(SDL_Renderer * renderer)
  {
      PSL1GHT_RenderData *data = (PSL1GHT_RenderData *) renderer->driverdata;
