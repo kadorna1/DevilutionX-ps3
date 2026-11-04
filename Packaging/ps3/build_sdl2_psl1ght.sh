@@ -29,8 +29,6 @@ SDL2_RENDERER_BLOB="3d5cf9b41bc7639d1da79b6f7059350a1bf57052"
 SDL2_JOYSTICK="src/joystick/psl1ght/SDL_sysjoystick.c"
 SDL2_JOYSTICK_BLOB="f7b2d2a8239c2052653f95ce155e656e9bdc431e"
 SDL2_SOURCE="$BUILD_DIR/_deps/sdl2-psl1ght"
-PATCH_FILE="$ROOT/Packaging/ps3/patches/sdl2-psl1ght-ppu-flip-wait.patch"
-TEXTURE_FREE_PATCH_FILE="$ROOT/Packaging/ps3/patches/sdl2-psl1ght-texture-free-flip-wait.patch"
 JOYSTICK_PATCH_FILE="$ROOT/Packaging/ps3/patches/sdl2-psl1ght-controller-input.patch"
 
 mkdir -p "$(dirname "$SDL2_SOURCE")"
@@ -71,161 +69,14 @@ if [[ "$joystick_worktree_blob" != "$SDL2_JOYSTICK_BLOB" ]]; then
 fi
 echo "Verified clean raw SDL2 renderer and joystick source blobs"
 
-if ! grep -Fq "Wait for the previous flip from the PPU" "$SDL2_SOURCE/$SDL2_RENDERER"; then
-  git -C "$SDL2_SOURCE" apply --check "$PATCH_FILE"
-  git -C "$SDL2_SOURCE" apply "$PATCH_FILE"
-fi
-
-grep -Fq "Wait for the previous flip from the PPU" "$SDL2_SOURCE/$SDL2_RENDERER"
-if grep -Fq "gcmSetWaitFlip(data->context)" "$SDL2_SOURCE/$SDL2_RENDERER"; then
-  echo "error: SDL2 renderer still queues gcmSetWaitFlip" >&2
+# Apply reviewed SDL2 backend changes from the exact, blob-verified upstream source.
+python3 "$ROOT/Packaging/ps3/patch_sdl2_psl1ght_renderer.py" "$SDL2_SOURCE/$SDL2_RENDERER"
+grep -Fq "gcmSetFlipHandler(PSL1GHT_FlipHandler)" "$SDL2_SOURCE/$SDL2_RENDERER"
+grep -Fq "rsxSetWriteBackendLabel(data->context, PSL1GHT_WAIT_IDLE_LABEL, value)" "$SDL2_SOURCE/$SDL2_RENDERER"
+if grep -Fq "gcmGetFlipStatus()" "$SDL2_SOURCE/$SDL2_RENDERER"; then
+  echo "error: SDL2 renderer still uses unreliable flip-status polling" >&2
   exit 1
 fi
-
-# SDL_RenderPresent submits the last flip and returns while it may still be in
-# flight. Wait before DestroyTexture releases RSX source memory, independently
-# of whether the previous flip patch was already present in the restored cache.
-if ! grep -Fq "Wait for pending RSX flip before freeing texture memory" "$SDL2_SOURCE/$SDL2_RENDERER"; then
-  git -C "$SDL2_SOURCE" apply --check "$TEXTURE_FREE_PATCH_FILE"
-  git -C "$SDL2_SOURCE" apply "$TEXTURE_FREE_PATCH_FILE"
-fi
-grep -Fq "Wait for pending RSX flip before freeing texture memory" "$SDL2_SOURCE/$SDL2_RENDERER"
-if grep -Fq "TODO: Wait for the DMA transfer to complete" "$SDL2_SOURCE/$SDL2_RENDERER"; then
-  echo "error: SDL2 texture destruction still has an unsatisfied DMA wait TODO" >&2
-  exit 1
-fi
-
-# Guard and trace RSX texture allocation. Use an exact function replacement
-# instead of git-apply for this hunk: the surrounding SDL renderer receives
-# other patches above, and this avoids fragile unified-diff offsets/context.
-python3 - "$SDL2_SOURCE/$SDL2_RENDERER" <<'PYTHON'
-from pathlib import Path
-import sys
-
-source_path = Path(sys.argv[1])
-source = source_path.read_bytes().decode("utf-8")
-start_marker = "\n".join([
-    "static int",
-    "PSL1GHT_CreateTexture(SDL_Renderer * renderer, SDL_Texture * texture)",
-    "{",
-])
-end_marker = "\n\nstatic int\nPSL1GHT_UpdateTexture"
-start = source.find(start_marker)
-end = source.find(end_marker, start + len(start_marker))
-if start < 0 or end < 0:
-    raise SystemExit("error: could not locate the exact SDL2 PSL1GHT_CreateTexture function")
-
-current = source[start:end]
-required = (
-    "PSL1GHT texture create begin",
-    "PSL1GHT texture allocation failed",
-    "SDL_OutOfMemory();",
-    "rsxFree(pixels);",
-)
-if all(marker in current for marker in required):
-    print("SDL2 RSX texture allocation guards already present")
-else:
-    expected = """static int
-PSL1GHT_CreateTexture(SDL_Renderer * renderer, SDL_Texture * texture)
-{
-    int bpp;
-    int pitch;
-    void *pixels;
-    Uint32 Rmask, Gmask, Bmask, Amask;
-
-    if (!SDL_PixelFormatEnumToMasks
-        (texture->format, &bpp, &Rmask, &Gmask, &Bmask, &Amask)) {
-        SDL_SetError("Unknown texture format");
-        return -1;
-    }
-
-    // Allocate GFX memory for textures
-    pitch = texture->w * SDL_BYTESPERPIXEL(texture->format);
-    pixels = rsxMemalign(64, texture->h * pitch);
-
-    texture->driverdata =
-        SDL_CreateRGBSurfaceFrom(pixels, texture->w, texture->h, bpp, pitch,
-                            Rmask, Gmask, Bmask, Amask);
-
-    SDL_SetSurfaceColorMod(texture->driverdata, texture->r, texture->g,
-                           texture->b);
-    SDL_SetSurfaceAlphaMod(texture->driverdata, texture->a);
-    SDL_SetSurfaceBlendMode(texture->driverdata, texture->blendMode);
-
-    if (!texture->driverdata) {
-        return -1;
-    }
-    return 0;
-}"""
-    if current != expected:
-        raise SystemExit(
-            "error: SDL2 PSL1GHT_CreateTexture differs from the verified upstream function; "
-            "refusing an unsafe automatic replacement"
-        )
-
-    replacement = """static int
-PSL1GHT_CreateTexture(SDL_Renderer * renderer, SDL_Texture * texture)
-{
-    int bpp;
-    int pitch;
-    void *pixels;
-    Uint32 Rmask, Gmask, Bmask, Amask;
-
-    SDL_Log("PSL1GHT texture create begin: %dx%d format=0x%08x",
-        texture->w, texture->h, texture->format);
-    if (!SDL_PixelFormatEnumToMasks
-        (texture->format, &bpp, &Rmask, &Gmask, &Bmask, &Amask)) {
-        SDL_SetError("Unknown texture format");
-        SDL_Log("PSL1GHT texture create failed: unsupported pixel format");
-        return -1;
-    }
-
-    // Allocate GFX memory for textures
-    pitch = texture->w * SDL_BYTESPERPIXEL(texture->format);
-    const size_t allocationSize = (size_t)texture->h * (size_t)pitch;
-    SDL_Log("PSL1GHT texture create: RSX allocation begin bytes=%u pitch=%d",
-        (unsigned int)allocationSize, pitch);
-    pixels = rsxMemalign(64, allocationSize);
-    if (!pixels) {
-        SDL_Log("PSL1GHT texture allocation failed: rsxMemalign returned NULL");
-        SDL_OutOfMemory();
-        return -1;
-    }
-    SDL_Log("PSL1GHT texture create: RSX allocation complete ptr=%p", pixels);
-
-    texture->driverdata =
-        SDL_CreateRGBSurfaceFrom(pixels, texture->w, texture->h, bpp, pitch,
-                            Rmask, Gmask, Bmask, Amask);
-    if (!texture->driverdata) {
-        SDL_Log("PSL1GHT texture create failed: SDL_CreateRGBSurfaceFrom: %s",
-            SDL_GetError());
-        rsxFree(pixels);
-        return -1;
-    }
-    SDL_Log("PSL1GHT texture create: surface complete ptr=%p", texture->driverdata);
-
-    SDL_SetSurfaceColorMod(texture->driverdata, texture->r, texture->g,
-                           texture->b);
-    SDL_SetSurfaceAlphaMod(texture->driverdata, texture->a);
-    SDL_SetSurfaceBlendMode(texture->driverdata, texture->blendMode);
-
-    SDL_Log("PSL1GHT texture create complete: %dx%d bytes=%u",
-        texture->w, texture->h, (unsigned int)allocationSize);
-    return 0;
-}"""
-    source = source[:start] + replacement + source[end:]
-    source_path.write_bytes(source.encode("utf-8"))
-    print("Applied exact SDL2 RSX texture allocation guard replacement")
-
-updated = source_path.read_bytes().decode("utf-8")
-function_start = updated.find(start_marker)
-function_end = updated.find(end_marker, function_start + len(start_marker))
-function = updated[function_start:function_end]
-for marker in required:
-    if marker not in function:
-        raise SystemExit(f"error: SDL2 RSX texture allocation guard missing after edit: {marker}")
-print("Validated SDL2 RSX texture allocation and cleanup guards")
-PYTHON
 
 actual_joystick_blob="$(git -C "$SDL2_SOURCE" rev-parse "HEAD:$SDL2_JOYSTICK")"
 if [[ "$actual_joystick_blob" != "$SDL2_JOYSTICK_BLOB" ]]; then
@@ -265,7 +116,7 @@ test -s "$SDL2_ARCHIVE" || {
   echo "SDL2 source: $SDL2_REPO ($SDL2_BRANCH)"
   echo "SDL2 source commit: $(git -C "$SDL2_SOURCE" rev-parse HEAD)"
   echo "SDL2 renderer source blob: $actual_blob"
-  echo "Renderer patches: PPU-side flip polling, wait-before-free, and guarded RSX texture allocation"
+  echo "Renderer patches: callback-driven flips, RSX backend DMA fences, explicit unsupported paths, and RSX memory accounting"
   echo "PS3 joystick source blob: $actual_joystick_blob"
   echo "Controller patch: initialize pad state and center the four analog axes"
   echo "Controller mapping: DualShock 3 4-axis / 16-button ioPad layout"
