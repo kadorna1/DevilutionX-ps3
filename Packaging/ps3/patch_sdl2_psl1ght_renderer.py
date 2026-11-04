@@ -623,7 +623,7 @@ for required in (
     "rsxSetWriteBackendLabel(data->context, PSL1GHT_WAIT_IDLE_LABEL, value)",
     "PSL1GHT timed out waiting for display flip completion",
     "PSL1GHT timed out waiting for RSX DMA completion",
-    "PSL1GHT texture_peak_bytes",
+    "texture_peak_bytes",
     "SDL_Unsupported()",
 ):
     if required not in source:
