@@ -63,6 +63,9 @@ void play_movie(const char *pszMovie, bool userCanClose)
 					for (const ControllerButtonEvent ctrlEvent : ToControllerButtonEvents(event)) {
 						if (!SkipsMovie(ctrlEvent))
 							continue;
+#ifdef __PS3__
+						LogInfo("PS3 movie: skip requested by controller event type={} button={}", static_cast<int>(event.type), static_cast<int>(ctrlEvent));
+#endif
 						movie_playing = false;
 						break;
 					}
@@ -70,8 +73,15 @@ void play_movie(const char *pszMovie, bool userCanClose)
 				switch (event.type) {
 				case SDL_EVENT_KEY_DOWN:
 				case SDL_EVENT_MOUSE_BUTTON_UP:
-					if (userCanClose || (event.type == SDL_EVENT_KEY_DOWN && SDLC_EventKey(event) == SDLK_ESCAPE))
+					if (userCanClose || (event.type == SDL_EVENT_KEY_DOWN && SDLC_EventKey(event) == SDLK_ESCAPE)) {
+#ifdef __PS3__
+						if (event.type == SDL_EVENT_KEY_DOWN)
+							LogInfo("PS3 movie: skip requested by keyboard event key={}", static_cast<int>(SDLC_EventKey(event)));
+						else
+							LogInfo("PS3 movie: skip requested by mouse button-up event button={}", static_cast<int>(event.button.button));
+#endif
 						movie_playing = false;
+					}
 					break;
 #ifdef USE_SDL3
 				case SDL_EVENT_WINDOW_FOCUS_LOST:
