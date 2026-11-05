@@ -166,12 +166,12 @@ PSL1GHT_WaitForRSXIdle(PSL1GHT_RenderData *data, const char *operation)
     rsxSetWriteBackendLabel(data->context, PSL1GHT_WAIT_IDLE_LABEL, value);
     rsxFlushBuffer(data->context);
 
-    while (*data->idle_label != value && waited < 20000) {
+    while ((s32)(*data->idle_label - value) < 0 && waited < 20000) {
         usleep(10);
         ++waited;
     }
 
-    if (*data->idle_label != value) {
+    if ((s32)(*data->idle_label - value) < 0) {
         SDL_Log("PSL1GHT RSX idle fence timeout during %s: expected=%u actual=%u",
             operation, (unsigned int)value, (unsigned int)*data->idle_label);
         SDL_SetError("PSL1GHT timed out waiting for RSX DMA completion");
