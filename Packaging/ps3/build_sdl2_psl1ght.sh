@@ -93,6 +93,18 @@ fi
 python3 "$ROOT/Packaging/ps3/patch_sdl2_psl1ght_renderer.py" "$SDL2_SOURCE/$SDL2_RENDERER"
 grep -Fq "gcmSetFlipHandler(PSL1GHT_FlipHandler)" "$SDL2_SOURCE/$SDL2_RENDERER"
 grep -Fq "PSL1GHT_FB_COUNT 3" "$SDL2_SOURCE/$SDL2_RENDERER"
+grep -Fq "PSL1GHT_ALIGN_PITCH(texture->w * SDL_BYTESPERPIXEL(texture->format))" "$SDL2_SOURCE/$SDL2_RENDERER"
+grep -Fq "PSL1GHT_ALIGN_PITCH(displayMode->w * SDL_BYTESPERPIXEL(displayMode->format))" "$SDL2_SOURCE/$SDL2_RENDERER"
+grep -Fq "rsxMemalign(128, displayMode->h * pitch)" "$SDL2_SOURCE/$SDL2_RENDERER"
+grep -Fq "PSL1GHT transfer surfaces require 64-byte-aligned pitches" "$SDL2_SOURCE/$SDL2_RENDERER"
+if grep -Fq "pitch = texture->w * SDL_BYTESPERPIXEL(texture->format);" "$SDL2_SOURCE/$SDL2_RENDERER"; then
+  echo "error: unaligned RSX texture pitch remains in SDL2 renderer" >&2
+  exit 1
+fi
+if grep -Fq "pitch = displayMode->w * SDL_BYTESPERPIXEL(displayMode->format);" "$SDL2_SOURCE/$SDL2_RENDERER"; then
+  echo "error: unaligned RSX scanout pitch remains in SDL2 renderer" >&2
+  exit 1
+fi
 grep -Fq "PSL1GHT_WaitForAllFlips(data)" "$SDL2_SOURCE/$SDL2_RENDERER"
 grep -Fq "data->flip_queued - data->flip_completed" "$SDL2_SOURCE/$SDL2_RENDERER"
 grep -Fq "PSL1GHT callback flip wait timeout:" "$SDL2_SOURCE/$SDL2_RENDERER"
