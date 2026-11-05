@@ -96,7 +96,7 @@ jobs:
           python3 Packaging/ps3/incremental.py prepare build-ps3
           ccache --show-stats
 
-      - name: Build SDL2 with callback-driven RSX flips and DMA fences
+      - name: Build SDL2 with GCM flip-status sync and DMA fences
         run: |
           set -euo pipefail
           bash Packaging/ps3/build_sdl2_psl1ght.sh build-ps3
