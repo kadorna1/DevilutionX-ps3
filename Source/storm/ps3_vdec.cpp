@@ -103,6 +103,7 @@ struct VdecMovieState {
 	bool frameReady = false;
 	bool sequenceDone = false;
 	int callbackError = 0;
+	unsigned int callbackMessages = 0;
 
 	u32 decoderHandle = 0;
 	sys_mem_addr_t decoderMemory = 0;
@@ -386,6 +387,15 @@ u32 VdecMovieCallback(u32 handle, u32 messageType, u32 messageData, u32 argument
 	auto *state = reinterpret_cast<VdecMovieState *>(static_cast<uintptr_t>(argument));
 	if (state == nullptr)
 		return 0;
+
+	// Keep a short callback trace. AUDONE without PICOUT means VDEC consumed
+	// the AU but did not produce a displayable picture, which distinguishes
+	// an input/sequence problem from a renderer or frame-presentation problem.
+	const unsigned int callbackNumber = state->callbackMessages++;
+	if (callbackNumber < 24) {
+		LogInfo("PS3 VDEC callback #{} handle={} type={} data=0x{:08x}",
+		    callbackNumber, handle, messageType, messageData);
+	}
 
 	switch (messageType) {
 	case VDEC_CALLBACK_AUDONE:
