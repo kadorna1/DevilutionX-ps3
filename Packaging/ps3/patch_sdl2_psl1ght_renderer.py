@@ -23,8 +23,8 @@ def replace_once(old: str, new: str, description: str) -> None:
     source = source.replace(old, new, 1)
 
 
-# The backend has exactly two display buffers. Completion callbacks are the
-# reliable signal for when the previous display buffer may be reused.
+# The backend uses three display buffers. Completion callbacks are the
+# reliable signal for when a previous scanout buffer may be reused.
 replace_once(
     """typedef struct
 {
@@ -480,11 +480,14 @@ PSL1GHT_RenderPresent(SDL_Renderer * renderer)
     __asm__ __volatile__("sync" ::: "memory");
 
     /*
-     * Do not put a flip semaphore in the RSX FIFO. Keep command execution
-     * asynchronous; the PPU-side callback fence in ActivateRenderer protects
-     * scanout-buffer reuse without stopping the command processor.
+     * Keep each flip synchronized with the display refresh. The sequence
+     * validated on real PS3 hardware is WaitFlip before SetFlip, then Flush.
+     * Omitting WaitFlip (or placing it after SetFlip) can leave two flips
+     * outstanding and stop subsequent scanout updates. The PPU callback
+     * fence still protects CPU reuse of scanout buffers.
      */
     PSL1GHT_ReserveRSXWords(data->context, 32);
+    gcmSetWaitFlip(data->context);
     const s32 flipResult = gcmSetFlip(data->context, data->current_screen);
     if (flipResult != 0) {
         SDL_Log("PSL1GHT gcmSetFlip failed: 0x%08x", (unsigned int)flipResult);
@@ -735,13 +738,15 @@ PSL1GHT_CreateTexture(SDL_Renderer * renderer, SDL_Texture * texture)
 replace_once(old_create, new_create, "RSX texture allocation guard and accounting")
 
 # The generated source must use the registered hardware flip callback as its
-# completion fence, retain triple-buffer headroom, and never fake completion.
+# completion fence, retain triple-buffer headroom, and use WaitFlip -> SetFlip
+# -> Flush ordering, without faking completion.
 for required in (
     "PSL1GHT_WaitForFreeBuffer(data)",
     "bool draw_buffer_acquired;",
     "data->draw_buffer_acquired = true;",
     "data->draw_buffer_acquired = false;",
     "PSL1GHT_WaitForAllFlips(data)",
+    "gcmSetWaitFlip(data->context)",
     "gcmSetFlipHandler(PSL1GHT_FlipHandler)",
     "data->flip_queued - data->flip_completed",
     "PSL1GHT callback flip wait timeout:",
@@ -761,7 +766,6 @@ for required in (
 for forbidden in (
     "gcmGetFlipStatus()",
     "gcmResetFlipStatus()",
-    "gcmSetWaitFlip(data->context)",
     "flip_pending",
     "force-resynchronizing",
     "data->flip_completed = data->flip_queued;",
@@ -773,4 +777,4 @@ if "static void waitFlip()" in source:
     raise SystemExit("error: obsolete SDL2 waitFlip helper remains in the patched renderer")
 
 path.write_text(source, encoding="utf-8")
-print("Applied asynchronous callback-driven triple-buffer synchronization without an RSX FIFO wait-flip semaphore, latched flip-fence failures, rsxkit RSX DMA fences, renderer capability fixes, and RSX memory accounting")
+print("Applied callback-driven triple-buffer synchronization with hardware-tested WaitFlip -> SetFlip -> Flush ordering, latched flip-fence failures, rsxkit RSX DMA fences, renderer capability fixes, and RSX memory accounting")
