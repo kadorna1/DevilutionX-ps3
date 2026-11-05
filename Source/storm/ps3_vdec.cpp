@@ -407,12 +407,18 @@ u32 VdecMovieCallback(u32 handle, u32 messageType, u32 messageData, u32 argument
 		u32 pictureAddress = 0;
 		const s32 itemResult = vdecGetPicItem(handle, &pictureAddress);
 		if (itemResult != 0 || pictureAddress == 0) {
-			SetCallbackError(state, itemResult != 0 ? itemResult : VDEC_ERROR_PIC);
+			const int error = itemResult != 0 ? itemResult : VDEC_ERROR_PIC;
+			LogError("PS3 VDEC PICOUT: vdecGetPicItem failed result=0x{:08x} address=0x{:08x}",
+			    static_cast<unsigned int>(itemResult), pictureAddress);
+			SetCallbackError(state, error);
 			break;
 		}
 		auto *picture = reinterpret_cast<vdecPicture *>(static_cast<uintptr_t>(pictureAddress));
 		if (picture->codec_type != VDEC_CODEC_TYPE_H264 || picture->codec_specific_addr == 0
 		    || picture->status != VDEC_PICTURE_NORMAL || picture->attr != 0) {
+			LogError("PS3 VDEC PICOUT: rejected picture codec={} status={} attr={} codec_info=0x{:08x} picture=0x{:08x} size={} access_units={}",
+			    picture->codec_type, picture->status, picture->attr, picture->codec_specific_addr,
+			    picture->picture_addr, picture->picture_size, picture->access_units);
 			SetCallbackError(state, VDEC_ERROR_PIC);
 			break;
 		}
@@ -421,6 +427,8 @@ u32 VdecMovieCallback(u32 handle, u32 messageType, u32 messageData, u32 argument
 		const int height = h264->height;
 		if (width <= 0 || height <= 0 || width > ((state->metadata.width + 15) & ~15)
 		    || height > ((state->metadata.height + 15) & ~15)) {
+			LogError("PS3 VDEC PICOUT: invalid H.264 dimensions {}x{}; expected at most {}x{}",
+			    width, height, (state->metadata.width + 15) & ~15, (state->metadata.height + 15) & ~15);
 			SetCallbackError(state, VDEC_ERROR_PIC);
 			break;
 		}
@@ -430,6 +438,8 @@ u32 VdecMovieCallback(u32 handle, u32 messageType, u32 messageData, u32 argument
 		format.alpha = 0xFF;
 		const s32 pictureResult = vdecGetPicture(handle, &format, state->decodedFrame);
 		if (pictureResult != 0) {
+			LogError("PS3 VDEC PICOUT: vdecGetPicture failed result=0x{:08x}",
+			    static_cast<unsigned int>(pictureResult));
 			SetCallbackError(state, pictureResult);
 			break;
 		}
@@ -438,6 +448,7 @@ u32 VdecMovieCallback(u32 handle, u32 messageType, u32 messageData, u32 argument
 		state->codedHeight = height;
 		state->frameReady = true;
 		SDL_UnlockMutex(state->mutex);
+		LogInfo("PS3 VDEC PICOUT: decoded {}x{} into {} bytes", width, height, state->decodedFrameSize);
 		break;
 	}
 	case VDEC_CALLBACK_SEQDONE:
@@ -446,6 +457,7 @@ u32 VdecMovieCallback(u32 handle, u32 messageType, u32 messageData, u32 argument
 		SDL_UnlockMutex(state->mutex);
 		break;
 	case VDEC_CALLBACK_ERROR:
+		LogError("PS3 VDEC error callback: code=0x{:08x}", messageData);
 		SetCallbackError(state, static_cast<int>(messageData));
 		break;
 	default:
