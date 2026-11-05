@@ -92,9 +92,30 @@ function findMovies(archive) {
   for (const name of BASE_MOVIES) candidates.set(name.toLowerCase(), candidates.get(name.toLowerCase()) ?? name);
   return [...candidates.values()].slice(0, MAX_MOVIES);
 }
+async function verifyLocalAsset(url, label) {
+  let response;
+  try {
+    // A HEAD request checks the Pages path without downloading the 32 MB WASM.
+    // The service worker deliberately leaves HEAD requests untouched.
+    response = await fetch(url, { method: "HEAD", cache: "no-store" });
+  } catch (error) {
+    throw new Error(`${label} request failed at ${url}: ${error?.message ?? String(error)}`);
+  }
+  if (!response.ok) throw new Error(`${label} returned HTTP ${response.status} at ${url}`);
+  const size = response.headers.get("content-length");
+  log(`${label} reachable (${size ? `${size} bytes` : "size not reported"}).`);
+}
+
 async function ensureFfmpeg() {
   if (ffmpegReady) return;
-  status("Loading FFmpeg WebAssembly", 3, "The local codec core is downloaded from this site and cached by your browser.");
+  status("Checking local FFmpeg assets", 3, "Verifying the FFmpeg module and WebAssembly paths on this GitHub Pages site.");
+  const base = new URL(import.meta.env.BASE_URL, self.location.href);
+  const coreURL = new URL("ffmpeg/ffmpeg-core.js", base).href;
+  const wasmURL = new URL("ffmpeg/ffmpeg-core.wasm", base).href;
+  await verifyLocalAsset(coreURL, "FFmpeg ESM core");
+  await verifyLocalAsset(wasmURL, "FFmpeg WebAssembly core");
+
+  status("Loading FFmpeg WebAssembly", 4, "Initializing the locally hosted codec core in a browser worker.");
   ffmpeg = new FFmpeg();
   ffmpeg.on("log", ({ message }) => {
     const line = String(message ?? "").trim();
@@ -107,11 +128,11 @@ async function ensureFfmpeg() {
     percent: Math.min(95, Math.max(5, 8 + (Number(progress) || 0) * 85)),
     detail: time ? `FFmpeg timestamp: ${time}` : "Processing locally in a browser worker."
   }));
-  const base = new URL(import.meta.env.BASE_URL, self.location.href);
-  await ffmpeg.load({
-    coreURL: new URL("ffmpeg/ffmpeg-core.js", base).href,
-    wasmURL: new URL("ffmpeg/ffmpeg-core.wasm", base).href
-  });
+  try {
+    await ffmpeg.load({ coreURL, wasmURL });
+  } catch (error) {
+    throw new Error(`FFmpeg initialization failed after both local assets responded successfully: ${error?.message ?? String(error)}. Check the browser console for worker/CSP details.`);
+  }
   currentLogLines = [];
   await ffmpeg.exec(["-hide_banner", "-decoders"]);
   const decoders = currentLogLines.join("\n");
