@@ -140,7 +140,10 @@ clearButton.addEventListener("click", () => {
 });
 if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register(new URL("sw.js", import.meta.env.BASE_URL), { scope: import.meta.env.BASE_URL })
+    // import.meta.env.BASE_URL is a path (for example /DevilutionX-ps3/),
+    // so resolve it against the current origin before constructing sw.js.
+    const appBase = new URL(import.meta.env.BASE_URL, location.origin);
+    navigator.serviceWorker.register(new URL("sw.js", appBase), { scope: appBase.pathname })
       .then(() => appendLog("Offline app assets are available through the browser cache."))
       .catch((error) => appendLog(`Offline cache registration unavailable: ${error.message}`));
   });
