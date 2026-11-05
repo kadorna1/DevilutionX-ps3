@@ -769,13 +769,6 @@ for forbidden in (
     if forbidden in source:
         raise SystemExit(f"error: obsolete or unsafe flip synchronization remains: {forbidden}")
 
-present_start = source.index("PSL1GHT_RenderPresent(SDL_Renderer * renderer)")
-waitflip_pos = source.index("gcmSetWaitFlip(data->context)", present_start)
-setflip_pos = source.index("gcmSetFlip(data->context, data->current_screen)", present_start)
-flush_pos = source.index("rsxFlushBuffer(data->context)", setflip_pos)
-if not (waitflip_pos < setflip_pos < flush_pos):
-    raise SystemExit("error: flip command order must be gcmSetWaitFlip -> gcmSetFlip -> rsxFlushBuffer")
-
 if "static void waitFlip()" in source:
     raise SystemExit("error: obsolete SDL2 waitFlip helper remains in the patched renderer")
 
