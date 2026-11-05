@@ -317,6 +317,22 @@ void OptionEntryBase::NotifyValueChanged()
 
 void OptionEntryBoolean::LoadFromIni(std::string_view category)
 {
+#ifdef __PS3__
+	// The PS3 port always presents through the RSX renderer. Ignore stale
+	// desktop settings saved by earlier builds: start fullscreen, fit the
+	// logical view to the display aspect, upscale it, and disable integer
+	// scaling so the image covers the complete 16:9 output.
+	if (category == "Graphics") {
+		if (key == "Fullscreen" || key == "Fit to Screen" || key == "Upscale") {
+			value = true;
+			return;
+		}
+		if (key == "Integer Scaling") {
+			value = false;
+			return;
+		}
+	}
+#endif
 	value = ini->getBool(category, key, defaultValue);
 }
 void OptionEntryBoolean::SaveToIni(std::string_view category) const
