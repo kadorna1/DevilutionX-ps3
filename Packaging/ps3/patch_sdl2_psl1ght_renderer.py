@@ -384,6 +384,12 @@ PSL1GHT_RenderPresent(SDL_Renderer * renderer)
         return;
 
     /*
+     * Publish CPU writes to the RSX-local scanout buffer before the RSX
+     * consumes it. This is required after the SDL software-surface writes.
+     */
+    __asm__ __volatile__("sync" ::: "memory");
+
+    /*
      * Match the working Xash3D PS3 port's real-hardware-tested order:
      * gcmSetWaitFlip -> gcmSetFlip -> rsxFlushBuffer.
      * The callback retires each queued buffer; no status polling is used.
@@ -397,8 +403,8 @@ PSL1GHT_RenderPresent(SDL_Renderer * renderer)
         return;
     }
 
-    ++data->flip_queued;
     rsxFlushBuffer(data->context);
+    ++data->flip_queued;
 
     data->first_fb = false;
     data->current_screen = (data->current_screen + 1) % PSL1GHT_FB_COUNT;
