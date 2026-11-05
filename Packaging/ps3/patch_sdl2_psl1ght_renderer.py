@@ -93,30 +93,30 @@ PSL1GHT_FlipHandler(const u32 head)
 }
 
 /*
- * The renderer allocates two scanout buffers. Before drawing into the next
- * one, wait for the flip of the previous buffer to complete. This is
- * callback-driven flip completion was observed to be more reliable than status polling on
- * immediate completion on real PS3 hardware in another PSL1GHT renderer.
+ * Wait until the previously submitted flip completes before the CPU/RSX
+ * reuses the next scanout buffer. This follows the PSL1GHT double-buffering
+ * guide; the callback counter is retained for diagnostics, not synchronization.
  */
 static SDL_bool
 PSL1GHT_WaitForFreeBuffer(PSL1GHT_RenderData *data)
 {
     int waited = 0;
 
-    if (data == NULL || !data->flip_handler_registered)
+    if (data == NULL || !data->flip_handler_registered || data->first_fb)
         return SDL_TRUE;
 
-    while ((u32)(data->flip_queued - data->flip_completed) != 0) {
-        usleep(100);
+    while (gcmGetFlipStatus() != 0) {
+        usleep(200);
         if (++waited >= 20000) {
-            SDL_Log("PSL1GHT flip fence timeout: queued=%u completed=%u",
+            SDL_Log("PSL1GHT flip status timeout: queued=%u completed=%u buffer=%d",
                 (unsigned int)data->flip_queued,
-                (unsigned int)data->flip_completed);
+                (unsigned int)data->flip_completed, data->current_screen);
             SDL_SetError("PSL1GHT timed out waiting for display flip completion");
             return SDL_FALSE;
         }
     }
 
+    gcmResetFlipStatus();
     return SDL_TRUE;
 }
 
@@ -369,17 +369,11 @@ PSL1GHT_RenderPresent(SDL_Renderer * renderer)
     if (!PSL1GHT_WaitForFreeBuffer(data))
         return;
 
-    /* The known-working PSL1GHT order is WaitFlip, SetFlip, then flush. */
-    gcmSetWaitFlip(data->context);
-    if (gcmSetFlip(data->context, data->current_screen) != 0) {
-        SDL_Log("PSL1GHT gcmSetFlip failed for display buffer %d", data->current_screen);
-        SDL_SetError("PSL1GHT could not submit display flip");
-        rsxFlushBuffer(data->context);
-        return;
-    }
-
+    /* Follow the PSL1GHT guide: submit the flip, flush it, then queue vblank wait. */
+    gcmSetFlip(data->context, data->current_screen);
     ++data->flip_queued;
     rsxFlushBuffer(data->context);
+    gcmSetWaitFlip(data->context);
 
     data->first_fb = false;
 
@@ -620,6 +614,9 @@ replace_once(old_create, new_create, "RSX texture allocation guard and accountin
 for required in (
     "gcmSetFlipHandler(PSL1GHT_FlipHandler)",
     "PSL1GHT_WaitForFreeBuffer(data)",
+    "gcmGetFlipStatus()",
+    "gcmResetFlipStatus()",
+    "gcmSetWaitFlip(data->context)",
     "rsxSetWriteBackendLabel(data->context, PSL1GHT_WAIT_IDLE_LABEL, value)",
     "PSL1GHT timed out waiting for display flip completion",
     "PSL1GHT timed out waiting for RSX DMA completion",
@@ -629,8 +626,8 @@ for required in (
     if required not in source:
         raise SystemExit(f"error: required PS3 renderer change missing: {required}")
 
-if "gcmGetFlipStatus()" in source or "gcmResetFlipStatus()" in source or "waitFlip()" in source:
-    raise SystemExit("error: old flip-status polling remains in the patched renderer")
+if "waitFlip()" in source:
+    raise SystemExit("error: old waitFlip helper remains in the patched renderer")
 
 path.write_text(source, encoding="utf-8")
-print("Applied callback-driven flip completion, RSX backend DMA fences, renderer capability fixes, and RSX memory accounting")
+print("Applied GCM flip-status synchronization, RSX backend DMA fences, renderer capability fixes, and RSX memory accounting")
