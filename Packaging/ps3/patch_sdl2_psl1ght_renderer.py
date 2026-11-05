@@ -43,6 +43,7 @@ replace_once(
     gcmContextData *context; // Context to keep track of the RSX buffer.
     volatile u32 flip_queued;
     volatile u32 flip_completed;
+    bool flip_wait_failed;
     volatile u32 *idle_label;
     u32 idle_fence_value;
     size_t display_bytes;
@@ -118,6 +119,8 @@ PSL1GHT_WaitForFlipCount(PSL1GHT_RenderData *data, u32 max_outstanding,
         SDL_SetError("PSL1GHT flip tracking is unavailable");
         return SDL_FALSE;
     }
+    if (data->flip_wait_failed)
+        return SDL_FALSE;
 
     while ((s32)(data->flip_queued - data->flip_completed)
            > (s32)max_outstanding) {
@@ -129,6 +132,7 @@ PSL1GHT_WaitForFlipCount(PSL1GHT_RenderData *data, u32 max_outstanding,
                 (unsigned int)data->flip_completed, (unsigned int)outstanding,
                 data->current_screen,
                 (unsigned int)(waited * PSL1GHT_FLIP_WAIT_SLEEP_US / 1000));
+            data->flip_wait_failed = true;
             SDL_SetError("PSL1GHT timed out waiting for display flip callback");
             return SDL_FALSE;
         }
@@ -476,12 +480,11 @@ PSL1GHT_RenderPresent(SDL_Renderer * renderer)
     __asm__ __volatile__("sync" ::: "memory");
 
     /*
-     * Match the hardware-validated Xash3D PS3 order: WaitFlip, SetFlip,
-     * Flush. Waiting is placed before the flip command so the RSX does not
-     * stop at a semaphore after the flip has already been queued.
+     * Do not put a flip semaphore in the RSX FIFO. Keep command execution
+     * asynchronous; the PPU-side callback fence in ActivateRenderer protects
+     * scanout-buffer reuse without stopping the command processor.
      */
     PSL1GHT_ReserveRSXWords(data->context, 32);
-    gcmSetWaitFlip(data->context);
     const s32 flipResult = gcmSetFlip(data->context, data->current_screen);
     if (flipResult != 0) {
         SDL_Log("PSL1GHT gcmSetFlip failed: 0x%08x", (unsigned int)flipResult);
@@ -743,7 +746,7 @@ for required in (
     "data->flip_queued - data->flip_completed",
     "PSL1GHT callback flip wait timeout:",
     "PSL1GHT_FB_COUNT 3",
-    "gcmSetWaitFlip(data->context)",
+    "flip_wait_failed",
     "PSL1GHT_ReserveRSXWords(data->context, 16)",
     "PSL1GHT_ReserveRSXWords(data->context, 32)",
     "rsxSetWriteBackendLabel(data->context, PSL1GHT_WAIT_IDLE_LABEL, value)",
@@ -758,6 +761,7 @@ for required in (
 for forbidden in (
     "gcmGetFlipStatus()",
     "gcmResetFlipStatus()",
+    "gcmSetWaitFlip(data->context)",
     "flip_pending",
     "force-resynchronizing",
     "data->flip_completed = data->flip_queued;",
@@ -776,4 +780,4 @@ if "static void waitFlip()" in source:
     raise SystemExit("error: obsolete SDL2 waitFlip helper remains in the patched renderer")
 
 path.write_text(source, encoding="utf-8")
-print("Applied callback-driven triple-buffer synchronization, hardware-validated flip command order, rsxkit RSX DMA fences, renderer capability fixes, and RSX memory accounting")
+print("Applied asynchronous callback-driven triple-buffer synchronization without an RSX FIFO wait-flip semaphore, latched flip-fence failures, rsxkit RSX DMA fences, renderer capability fixes, and RSX memory accounting")
