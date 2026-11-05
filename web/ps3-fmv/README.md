@@ -28,7 +28,7 @@ npm run build
 npm run preview
 ```
 
-Build copies the pinned FFmpeg core assets into `public/ffmpeg`; runtime requests stay on the GitHub Pages origin.
+Build copies the pinned FFmpeg core ESM assets into `public/ffmpeg`. The ESM build is required because the FFmpeg worker is a module worker; runtime requests stay on the GitHub Pages origin.
 
 ## Requirements and limits
 
