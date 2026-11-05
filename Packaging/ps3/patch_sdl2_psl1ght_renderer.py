@@ -439,6 +439,28 @@ PSL1GHT_RenderPresent(SDL_Renderer * renderer)
 {
     PSL1GHT_RenderData *data = (PSL1GHT_RenderData *) renderer->driverdata;
 
+    if (data->first_fb)
+    {
+        gcmResetFlipStatus();
+    }
+
+    gcmSetFlip(data->context, data->current_screen);
+    rsxFlushBuffer(data->context);
+
+    gcmSetWaitFlip(data->context);
+
+    waitFlip();
+
+    data->first_fb = false;
+
+    // Update the flipping chain, if any
+    data->current_screen = (data->current_screen + 1) % 2;
+}""",
+    """static void
+PSL1GHT_RenderPresent(SDL_Renderer * renderer)
+{
+    PSL1GHT_RenderData *data = (PSL1GHT_RenderData *) renderer->driverdata;
+
     /*
      * The draw buffer is acquired by PSL1GHT_ActivateRenderer before any
      * software drawing takes place. If this frame did not draw, acquire it
@@ -478,9 +500,12 @@ PSL1GHT_RenderPresent(SDL_Renderer * renderer)
     data->first_fb = false;
     data->current_screen = (data->current_screen + 1) % PSL1GHT_FB_COUNT;
     data->draw_buffer_acquired = false;
-}
+}""",
+    "PSL1GHT RenderPresent previous-frame flip completion order",
+)
 
-static void
+replace_once(
+    """static void
 PSL1GHT_DestroyTexture(SDL_Renderer * renderer, SDL_Texture * texture)
 {
     SDL_Surface *surface = (SDL_Surface *) texture->driverdata;
