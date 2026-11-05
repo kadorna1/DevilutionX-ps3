@@ -54,6 +54,18 @@ from a copy of the original game that you are entitled to use.
 The PS3 build stores saves and configuration in the title's writable
 USRDIR directory. The title ID is DEVILUT00.
 
+## Browser-only FMV converter
+
+A static, local-processing converter is being published at:
+
+https://kadorna1.github.io/DevilutionX-ps3/
+
+It reads the selected MPQ files in the browser, converts Smacker video to PS3-compatible H.264/Annex-B and audio to signed 16-bit big-endian PCM, and downloads a separate `devilutionx-vdec.mpq`. The original `DIABDAT.MPQ` and Hellfire archives are not modified.
+
+The page has no upload endpoint, backend, analytics, or third-party runtime CDN. Selected game archives are processed in browser memory; the service worker caches only the page's static application and codec assets. After the first load and codec download, the app can be used offline while those assets remain cached.
+
+Copy the generated `devilutionx-vdec.mpq` to the PS3's `USRDIR` beside the original game archives. The PS3 build automatically loads this optional archive above the base game MPQ priority. The existing command-line helper below remains available for users who prefer a local desktop conversion workflow.
+
 ## Preparing MPQs for PS3 Cell VDEC FMVs
 
 The PS3 movie code now prefers Cell VDEC hardware playback when converted
