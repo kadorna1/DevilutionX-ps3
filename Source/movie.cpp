@@ -59,11 +59,21 @@ void play_movie(const char *pszMovie, bool userCanClose)
 
 	const int movieFlags = loop_movie ? 0x100C0808 : 0x10280808;
 #ifdef __PS3__
-	const bool usingVdec = PS3VdecMovieBegin(pszMovie, movieFlags);
+	// Prefer the original Smacker pipeline: it is the known-working PS3
+	// playback path and decodes video/audio as the movie is streamed. Only
+	// fall back to Cell VDEC when the original SMK decoder cannot open it.
+	bool usingVdec = false;
+	bool movieOpened = SVidPlayBegin(pszMovie, movieFlags);
+	if (!movieOpened) {
+		LogWarn("PS3 movie: Smacker decoder could not open {}; trying Cell VDEC sidecar", pszMovie);
+		usingVdec = PS3VdecMovieBegin(pszMovie, movieFlags);
+		movieOpened = usingVdec;
+	}
 #else
 	constexpr bool usingVdec = false;
+	const bool movieOpened = SVidPlayBegin(pszMovie, movieFlags);
 #endif
-	if (usingVdec || SVidPlayBegin(pszMovie, movieFlags)) {
+	if (movieOpened) {
 		auto EndMoviePlayback = [&]() {
 #ifdef __PS3__
 			if (usingVdec)
