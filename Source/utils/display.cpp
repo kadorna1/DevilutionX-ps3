@@ -617,7 +617,11 @@ bool SpawnWindow(const char *lpWindowName)
 #endif
 	if (*GetOptions().Graphics.upscale) {
 		if (*GetOptions().Graphics.fullscreen) {
-#ifdef USE_SDL3
+#if defined(__PS3__)
+			// Select an explicit video mode after window creation, before
+			// entering fullscreen. SDL_WINDOW_FULLSCREEN_DESKTOP would keep
+			// whichever mode the XMB last selected.
+#elif defined(USE_SDL3)
 			flags |= SDL_WINDOW_FULLSCREEN;
 #else
 			flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
@@ -664,6 +668,34 @@ bool SpawnWindow(const char *lpWindowName)
 	if (ghMainWnd == nullptr) {
 		ErrSdl();
 	}
+
+#ifdef __PS3__
+	if (*GetOptions().Graphics.fullscreen && *GetOptions().Graphics.upscale) {
+		// Force the PS3's 1080p progressive mode rather than inheriting the
+		// XMB's previous desktop mode. Keep the game's logical resolution
+		// aspect-fitted; SDL's RSX renderer scales that surface over 1920x1080.
+		const SDL_DisplayMode mode = GetNearestDisplayMode(Size { 1920, 1080 }, SDL_PIXELFORMAT_ARGB8888);
+		if (SDL_SetWindowDisplayMode(ghMainWnd, &mode) == 0
+		    && SDL_SetWindowFullscreen(ghMainWnd, SDL_WINDOW_FULLSCREEN) == 0) {
+			LogInfo("PS3 display: selected 1920x1080 progressive fullscreen mode");
+		} else {
+			LogWarn("PS3 display: could not select 1920x1080 mode: {}; falling back to desktop fullscreen",
+			    SDL_GetError());
+			SDL_ClearError();
+			if (SDL_SetWindowFullscreen(ghMainWnd, SDL_WINDOW_FULLSCREEN_DESKTOP) != 0)
+				ErrSdl();
+		}
+		// Recompute the logical view after switching modes. Fit to Screen
+		// expands 640x480 to a 16:9 viewport (853x480) without stretching
+		// game pixels non-uniformly; the renderer fills the 1080p scanout.
+		windowSize = GetPreferredWindowSize();
+		SDL_DisplayMode activeMode {};
+		if (SDL_GetCurrentDisplayMode(0, &activeMode) == 0) {
+			LogInfo("PS3 display: active mode {}x{}, logical view {}x{}",
+			    activeMode.w, activeMode.h, gnScreenWidth, gnScreenHeight);
+		}
+	}
+#endif
 
 	int refreshRate = 60;
 #ifndef USE_SDL1
