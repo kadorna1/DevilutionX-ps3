@@ -144,6 +144,43 @@ PSL1GHT_WaitForAllFlips(PSL1GHT_RenderData *data)
 }
 
 /*
+ * Adapted from rsxkit/src/fifo.c (MIT): call the PSL1GHT context callback
+ * with a real memory clobber. Its stock command macros can otherwise invoke
+ * a callback that changes context->current without informing the compiler.
+ */
+static s32 __attribute__((noinline))
+PSL1GHT_RSXContextCallback(gcmContextData *context, u32 count)
+{
+    register u64 r3 __asm__("r3") = (u64)context;
+    register u64 r4 __asm__("r4") = (u64)count;
+    u32 opd = (u32)context->callback;
+
+    __asm__ __volatile__(
+        "stdu 1,-128(1)\n\t"
+        "std 2,40(1)\n\t"
+        "lwz 0,0(%2)\n\t"
+        "lwz 2,4(%2)\n\t"
+        "mtctr 0\n\t"
+        "bctrl\n\t"
+        "ld 2,40(1)\n\t"
+        "addi 1,1,128\n\t"
+        : "+r"(r3), "+r"(r4)
+        : "b"((u64)opd)
+        : "r0", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "ctr", "lr", "xer",
+          "cr0", "cr1", "cr5", "cr6", "cr7", "memory");
+    return (s32)r3;
+}
+
+/* Reserve command-buffer space before PSL1GHT writes its label command. */
+static void
+PSL1GHT_ReserveRSXWords(gcmContextData *context, u32 words)
+{
+    if (context == NULL || context->current + words <= context->end)
+        return;
+    (void)PSL1GHT_RSXContextCallback(context, words);
+}
+
+/*
  * A flip callback protects scanout buffers, but texture source memory may
  * still be read by an earlier transfer command. A backend label is written
  * after all prior RSX work and therefore provides the required DMA fence.
@@ -163,6 +200,7 @@ PSL1GHT_WaitForRSXIdle(PSL1GHT_RenderData *data, const char *operation)
     if (value == 0)
         value = ++data->idle_fence_value;
 
+    PSL1GHT_ReserveRSXWords(data->context, 16);
     rsxSetWriteBackendLabel(data->context, PSL1GHT_WAIT_IDLE_LABEL, value);
     rsxFlushBuffer(data->context);
 
@@ -644,6 +682,7 @@ for required in (
     "PSL1GHT_WaitForFreeBuffer(data)",
     "PSL1GHT_WaitForAllFlips(data)",
     "gcmSetFlipHandler(PSL1GHT_FlipHandler)",
+    "PSL1GHT_ReserveRSXWords(data->context, 16)",
     "gcmSetWaitFlip(data->context)",
     "PSL1GHT_FB_COUNT 3",
     "rsxSetWriteBackendLabel(data->context, PSL1GHT_WAIT_IDLE_LABEL, value)",
