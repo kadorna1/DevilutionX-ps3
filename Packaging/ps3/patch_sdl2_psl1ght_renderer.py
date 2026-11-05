@@ -51,6 +51,7 @@ replace_once(
     unsigned int texture_count;
     unsigned int texture_peak_count;
     bool flip_handler_registered;
+    bool draw_buffer_acquired;
 } PSL1GHT_RenderData;""",
     "renderer state structure",
 )
@@ -228,6 +229,38 @@ PSL1GHT_WaitForRSXIdle(PSL1GHT_RenderData *data, const char *operation)
     return SDL_TRUE;
 }""",
     "flip and RSX fence helpers",
+)
+
+replace_once(
+    """static SDL_Surface *
+PSL1GHT_ActivateRenderer(SDL_Renderer * renderer)
+{
+    PSL1GHT_RenderData *data = (PSL1GHT_RenderData *) renderer->driverdata;
+
+    return data->screens[data->current_screen];
+}""",
+    """static SDL_Surface *
+PSL1GHT_ActivateRenderer(SDL_Renderer * renderer)
+{
+    PSL1GHT_RenderData *data = (PSL1GHT_RenderData *) renderer->driverdata;
+
+    if (data == NULL)
+        return NULL;
+
+    /*
+     * Acquire the next scanout buffer before SDL's software renderer writes
+     * into it. Waiting in RenderPresent is too late: the CPU has already
+     * modified the buffer by then.
+     */
+    if (!data->draw_buffer_acquired) {
+        if (!PSL1GHT_WaitForFreeBuffer(data))
+            return NULL;
+        data->draw_buffer_acquired = true;
+    }
+
+    return data->screens[data->current_screen];
+}""",
+    "acquire framebuffer before software rendering",
 )
 
 # Make partial renderer initialization cleanup aware of allocations as soon
@@ -427,8 +460,16 @@ PSL1GHT_RenderPresent(SDL_Renderer * renderer)
 {
     PSL1GHT_RenderData *data = (PSL1GHT_RenderData *) renderer->driverdata;
 
-    if (!PSL1GHT_WaitForFreeBuffer(data))
-        return;
+    /*
+     * The draw buffer is acquired by PSL1GHT_ActivateRenderer before any
+     * software drawing takes place. If this frame did not draw, acquire it
+     * here before submitting it for scanout.
+     */
+    if (!data->draw_buffer_acquired) {
+        if (!PSL1GHT_WaitForFreeBuffer(data))
+            return;
+        data->draw_buffer_acquired = true;
+    }
 
     /*
      * Publish CPU writes to the RSX-local scanout buffer before the RSX
@@ -461,6 +502,7 @@ PSL1GHT_RenderPresent(SDL_Renderer * renderer)
 
     data->first_fb = false;
     data->current_screen = (data->current_screen + 1) % PSL1GHT_FB_COUNT;
+    data->draw_buffer_acquired = false;
 }""",
     "PSL1GHT RenderPresent previous-frame flip completion order",
 )
@@ -695,6 +737,9 @@ replace_once(old_create, new_create, "RSX texture allocation guard and accountin
 # The generated source must not retain any of the old unsafe synchronization.
 for required in (
     "PSL1GHT_WaitForFreeBuffer(data)",
+    "bool draw_buffer_acquired;",
+    "data->draw_buffer_acquired = true;",
+    "data->draw_buffer_acquired = false;",
     "PSL1GHT_WaitForAllFlips(data)",
     "gcmSetFlipHandler(PSL1GHT_FlipHandler)",
     "PSL1GHT_ReserveRSXWords(data->context, 16)",
