@@ -88,7 +88,7 @@ static void waitFlip()
 #define PSL1GHT_FLIP_WAIT_MAX_POLLS 20000
 
 /*
- * The GCM flip callback is the hardware completion signal. gcmGetFlipStatus()
+ * The GCM flip callback is the hardware completion signal. Raw flip-status
  * polling is intentionally not used: the hardware-tested Xash3D PS3 backend
  * found that status polling did not reliably throttle real-console flips.
  */
