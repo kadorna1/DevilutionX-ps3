@@ -98,15 +98,23 @@ grep -Fq "data->flip_queued - data->flip_completed" "$SDL2_SOURCE/$SDL2_RENDERER
 grep -Fq "PSL1GHT callback flip wait timeout:" "$SDL2_SOURCE/$SDL2_RENDERER"
 grep -Fq "flip_wait_failed" "$SDL2_SOURCE/$SDL2_RENDERER"
 grep -Fq "gcmSetFlip(data->context, data->current_screen)" "$SDL2_SOURCE/$SDL2_RENDERER"
+grep -Fq "gcmSetWaitFlip(data->context)" "$SDL2_SOURCE/$SDL2_RENDERER"
+python3 - "$SDL2_SOURCE/$SDL2_RENDERER" <<'PY'
+import pathlib
+import sys
+
+renderer = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
+wait_flip = renderer.find("gcmSetWaitFlip(data->context);")
+set_flip = renderer.find("const s32 flipResult = gcmSetFlip(data->context, data->current_screen);")
+flush = renderer.find("rsxFlushBuffer(data->context);", set_flip)
+if not (0 <= wait_flip < set_flip < flush):
+    raise SystemExit("error: SDL2 RSX flip order must be WaitFlip -> SetFlip -> Flush")
+PY
 grep -Fq "PSL1GHT_ReserveRSXWords(data->context, 16)" "$SDL2_SOURCE/$SDL2_RENDERER"
 grep -Fq "PSL1GHT_ReserveRSXWords(data->context, 32)" "$SDL2_SOURCE/$SDL2_RENDERER"
 grep -Fq "rsxSetWriteBackendLabel(data->context, PSL1GHT_WAIT_IDLE_LABEL, value)" "$SDL2_SOURCE/$SDL2_RENDERER"
 if grep -Fq "gcmGetFlipStatus()" "$SDL2_SOURCE/$SDL2_RENDERER" || grep -Fq "gcmResetFlipStatus()" "$SDL2_SOURCE/$SDL2_RENDERER"; then
   echo "error: unreliable GCM flip-status polling remains in SDL2 renderer" >&2
-  exit 1
-fi
-if grep -Fq "gcmSetWaitFlip(data->context)" "$SDL2_SOURCE/$SDL2_RENDERER"; then
-  echo "error: RSX FIFO wait-flip semaphore remains in SDL2 renderer" >&2
   exit 1
 fi
 if grep -Fq "force-resynchronizing" "$SDL2_SOURCE/$SDL2_RENDERER"; then
@@ -154,7 +162,7 @@ test -s "$SDL2_ARCHIVE" || {
   echo "SDL2 renderer source blob: $actual_blob"
   echo "SDL2 video source blob: $video_worktree_blob"
   echo "RSX initialization: 1 MiB command buffer + 8 MiB shared I/O allocation"
-  echo "Renderer patches: callback-authoritative triple-buffer PPU fence, asynchronous SetFlip -> Flush without an RSX wait-flip semaphore, latched flip-wait failures, rsxkit FIFO reservation and RSX DMA fences, PPC scanout barrier, explicit unsupported paths, and RSX memory accounting"
+  echo "Renderer patches: callback-authoritative triple-buffer PPU fence, hardware-tested WaitFlip -> SetFlip -> Flush ordering, latched flip-wait failures, rsxkit FIFO reservation and RSX DMA fences, PPC scanout barrier, explicit unsupported paths, and RSX memory accounting"
   echo "PS3 joystick source blob: $actual_joystick_blob"
   echo "Controller patch: initialize pad state and center the four analog axes"
   echo "Controller mapping: DualShock 3 4-axis / 16-button ioPad layout"
