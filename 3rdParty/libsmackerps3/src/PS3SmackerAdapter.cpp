@@ -2,8 +2,6 @@
 
 #include "smacker.h"
 
-#include "utils/log.hpp"
-
 #include <algorithm>
 #include <array>
 #include <cstdio>
@@ -353,14 +351,10 @@ uint32_t PS3Smacker_GetNextFrame(PS3SmackerHandle &handle)
 	if (instance == nullptr || instance->decodeFailed || instance->nextFrame >= instance->frameCount)
 		return std::numeric_limits<uint32_t>::max();
 	const uint32_t decodedIndex = instance->nextFrame;
-	LogInfo("PS3Smacker: C decoder begin frame={} first={}",
-	    decodedIndex, instance->firstFramePending);
 	const char result = instance->firstFramePending
 	    ? smk_first(instance->decoder)
 	    : smk_next(instance->decoder);
 	instance->firstFramePending = false;
-	LogInfo("PS3Smacker: C decoder complete frame={} status={}",
-	    decodedIndex, static_cast<int>(result));
 	if (result == SMK_ERROR || result == SMK_DONE) {
 		instance->decodeFailed = true;
 		std::fprintf(stderr, "[PS3Smacker] Frame decode failed at index %u\n", decodedIndex);
