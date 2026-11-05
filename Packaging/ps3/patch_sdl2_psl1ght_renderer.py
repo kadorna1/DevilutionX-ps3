@@ -87,9 +87,9 @@ static void waitFlip()
 #define PSL1GHT_FB_COUNT 3
 
 /*
- * Hardware-tested callback accounting, following the working Xash3D PS3
- * port. The callback is the source of truth for buffer retirement on real
- * hardware, rather than the unreliable status-polling path.
+ * Keep flip-completion callbacks as telemetry. Buffer reuse is synchronized
+ * by the PPU-side GCM flip-status wait below, so a delayed or missing callback
+ * cannot authorize reuse of a buffer and cannot freeze presentation.
  */
 static PSL1GHT_RenderData *PSL1GHT_ActiveFlipData;
 
@@ -484,9 +484,8 @@ PSL1GHT_RenderPresent(SDL_Renderer * renderer)
     __asm__ __volatile__("sync" ::: "memory");
 
     /*
-     * Match the working Xash3D PS3 port's real-hardware-tested order:
-     * gcmSetWaitFlip -> gcmSetFlip -> rsxFlushBuffer.
-     * The callback retires each queued buffer; no status polling is used.
+     * Queue a flip without gcmSetWaitFlip. The RSX FIFO must not stop at the
+     * flip semaphore; the PPU waits for completion before the next draw.
      */
     PSL1GHT_ReserveRSXWords(data->context, 32);
     const s32 flipResult = gcmSetFlip(data->context, data->current_screen);
@@ -739,7 +738,8 @@ PSL1GHT_CreateTexture(SDL_Renderer * renderer, SDL_Texture * texture)
 
 replace_once(old_create, new_create, "RSX texture allocation guard and accounting")
 
-# The generated source must not retain any of the old unsafe synchronization.
+# The generated source must use the PPU-side flip wait and must not retain
+# the command-stream semaphore or fake callback completion recovery.
 for required in (
     "PSL1GHT_WaitForFreeBuffer(data)",
     "bool draw_buffer_acquired;",
@@ -747,12 +747,15 @@ for required in (
     "data->draw_buffer_acquired = false;",
     "PSL1GHT_WaitForAllFlips(data)",
     "gcmSetFlipHandler(PSL1GHT_FlipHandler)",
-    "PSL1GHT_ReserveRSXWords(data->context, 16)",
-    "gcmSetWaitFlip(data->context)",
+    "gcmGetFlipStatus()",
+    "gcmResetFlipStatus()",
+    "data->flip_pending = true;",
+    "PSL1GHT flip callback behind hardware status: queued=%u callback_completed=%u",
+    "PSL1GHT PPU flip wait timeout: status=%u",
     "PSL1GHT_FB_COUNT 3",
+    "PSL1GHT_ReserveRSXWords(data->context, 16)",
+    "PSL1GHT_ReserveRSXWords(data->context, 32)",
     "rsxSetWriteBackendLabel(data->context, PSL1GHT_WAIT_IDLE_LABEL, value)",
-    "PSL1GHT flip callback timeout: queued=%u completed=%u outstanding=%u buffer=%d; force-resynchronizing",
-    "data->flip_completed = data->flip_queued;",
     "PSL1GHT flip submitted: buffer=%d queued=%u completed=%u",
     "PSL1GHT timed out waiting for RSX DMA completion",
     "texture_peak_bytes",
@@ -761,10 +764,16 @@ for required in (
     if required not in source:
         raise SystemExit(f"error: required PS3 renderer change missing: {required}")
 
-if "PSL1GHT flip callback timeout" in source and "data->flip_completed = data->flip_queued;" not in source:
-    raise SystemExit("error: timed-out flip accounting does not recover")
-if "waitFlip()" in source or "gcmGetFlipStatus()" in source or "gcmResetFlipStatus()" in source:
-    raise SystemExit("error: unreliable RSX flip-status polling remains in the patched renderer")
+for forbidden in (
+    "gcmSetWaitFlip(data->context)",
+    "force-resynchronizing",
+    "data->flip_completed = data->flip_queued;",
+):
+    if forbidden in source:
+        raise SystemExit(f"error: obsolete or unsafe flip synchronization remains: {forbidden}")
+
+if "static void waitFlip()" in source:
+    raise SystemExit("error: obsolete SDL2 waitFlip helper remains in the patched renderer")
 
 path.write_text(source, encoding="utf-8")
-print("Applied callback-driven triple buffering, rsxkit RSX DMA fences, renderer capability fixes, and RSX memory accounting")
+print("Applied PPU-side flip-status synchronization, callback telemetry, rsxkit RSX DMA fences, renderer capability fixes, and RSX memory accounting")
