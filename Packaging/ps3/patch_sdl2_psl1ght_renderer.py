@@ -344,27 +344,33 @@ PSL1GHT_RenderPresent(SDL_Renderer * renderer)
     PSL1GHT_RenderData *data = (PSL1GHT_RenderData *) renderer->driverdata;
 
     /*
-     * Keep PSL1GHT's original order: reset once, submit the flip, flush,
-     * queue the RSX vblank wait, then wait for gcmGetFlipStatus to clear.
-     * Waiting before gcmSetWaitFlip leaves the status latched on real hardware.
+     * Retire the previous flip before submitting another one. This is the
+     * upstream PSL1GHT double-buffer sequence: the first frame resets flip
+     * status, and each later frame waits for the preceding flip to complete.
      */
-    if (data->first_fb)
+    if (!data->first_fb) {
+        if (!PSL1GHT_WaitForFreeBuffer(data))
+            return;
+    } else {
         gcmResetFlipStatus();
+    }
 
-    gcmSetFlip(data->context, data->current_screen);
+    const s32 flipResult = gcmSetFlip(data->context, data->current_screen);
+    if (flipResult != 0) {
+        SDL_Log("PSL1GHT gcmSetFlip failed: 0x%08x", (unsigned int)flipResult);
+        SDL_SetError("PSL1GHT could not queue display flip");
+        return;
+    }
     ++data->flip_queued;
     rsxFlushBuffer(data->context);
     gcmSetWaitFlip(data->context);
-
-    if (!PSL1GHT_WaitForFreeBuffer(data))
-        return;
 
     data->first_fb = false;
 
     // Update the flipping chain, if any
     data->current_screen = (data->current_screen + 1) % 2;
 }""",
-    "PSL1GHT RenderPresent flip completion order",
+    "PSL1GHT RenderPresent previous-frame flip completion order",
 )
 
 replace_once(
