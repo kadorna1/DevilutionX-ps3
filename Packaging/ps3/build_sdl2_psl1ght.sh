@@ -26,6 +26,8 @@ SDL2_REPO="https://github.com/shagkur/SDL_PSL1GHT.git"
 SDL2_BRANCH="sdl2_master"
 SDL2_RENDERER="src/render/psl1ght/SDL_PSL1GHTrender.c"
 SDL2_RENDERER_BLOB="3d5cf9b41bc7639d1da79b6f7059350a1bf57052"
+SDL2_VIDEO="src/video/psl1ght/SDL_PSL1GHTvideo.c"
+SDL2_VIDEO_BLOB="266534f6bf71c73392b4d37bb04d85dbb78267bd"
 SDL2_JOYSTICK="src/joystick/psl1ght/SDL_sysjoystick.c"
 SDL2_JOYSTICK_BLOB="f7b2d2a8239c2052653f95ce155e656e9bdc431e"
 SDL2_SOURCE="$BUILD_DIR/_deps/sdl2-psl1ght"
@@ -51,14 +53,22 @@ fi
 # cannot make a valid patch appear not to apply. This preserves Makefiles and
 # object files while resetting only the two source files patched below.
 git -C "$SDL2_SOURCE" show "HEAD:$SDL2_RENDERER" > "$SDL2_SOURCE/$SDL2_RENDERER"
+git -C "$SDL2_SOURCE" show "HEAD:$SDL2_VIDEO" > "$SDL2_SOURCE/$SDL2_VIDEO"
 git -C "$SDL2_SOURCE" show "HEAD:$SDL2_JOYSTICK" > "$SDL2_SOURCE/$SDL2_JOYSTICK"
 
 renderer_worktree_blob="$(git -C "$SDL2_SOURCE" hash-object -- "$SDL2_RENDERER")"
+video_worktree_blob="$(git -C "$SDL2_SOURCE" hash-object -- "$SDL2_VIDEO")"
 joystick_worktree_blob="$(git -C "$SDL2_SOURCE" hash-object -- "$SDL2_JOYSTICK")"
 if [[ "$renderer_worktree_blob" != "$SDL2_RENDERER_BLOB" ]]; then
   echo "error: SDL2 renderer working copy does not match its verified Git blob" >&2
   echo "expected blob: $SDL2_RENDERER_BLOB" >&2
   echo "actual blob:   $renderer_worktree_blob" >&2
+  exit 1
+fi
+if [[ "$video_worktree_blob" != "$SDL2_VIDEO_BLOB" ]]; then
+  echo "error: SDL2 video working copy does not match its verified Git blob" >&2
+  echo "expected blob: $SDL2_VIDEO_BLOB" >&2
+  echo "actual blob:   $video_worktree_blob" >&2
   exit 1
 fi
 if [[ "$joystick_worktree_blob" != "$SDL2_JOYSTICK_BLOB" ]]; then
@@ -67,7 +77,17 @@ if [[ "$joystick_worktree_blob" != "$SDL2_JOYSTICK_BLOB" ]]; then
   echo "actual blob:   $joystick_worktree_blob" >&2
   exit 1
 fi
-echo "Verified clean raw SDL2 renderer and joystick source blobs"
+echo "Verified clean raw SDL2 renderer, video, and joystick source blobs"
+
+# Raise the RSX command and shared I/O allocations before the renderer is built.
+python3 "$ROOT/Packaging/ps3/patch_sdl2_psl1ght_video.py" "$SDL2_SOURCE/$SDL2_VIDEO"
+grep -Fq "#define PSL1GHT_RSX_CB_SIZE   (1U * 1024U * 1024U)" "$SDL2_SOURCE/$SDL2_VIDEO"
+grep -Fq "#define PSL1GHT_RSX_HOST_SIZE (8U * 1024U * 1024U)" "$SDL2_SOURCE/$SDL2_VIDEO"
+grep -Fq "PSL1GHT RSX init: ret=%d" "$SDL2_SOURCE/$SDL2_VIDEO"
+if grep -Fq "rsxInit(&devdata->_CommandBuffer, 0x10000, 1024*1024, host_addr)" "$SDL2_SOURCE/$SDL2_VIDEO"; then
+  echo "error: obsolete 64 KiB / 1 MiB RSX initialization remains" >&2
+  exit 1
+fi
 
 # Apply reviewed SDL2 backend changes from the exact, blob-verified upstream source.
 python3 "$ROOT/Packaging/ps3/patch_sdl2_psl1ght_renderer.py" "$SDL2_SOURCE/$SDL2_RENDERER"
@@ -125,7 +145,9 @@ test -s "$SDL2_ARCHIVE" || {
   echo "SDL2 source: $SDL2_REPO ($SDL2_BRANCH)"
   echo "SDL2 source commit: $(git -C "$SDL2_SOURCE" rev-parse HEAD)"
   echo "SDL2 renderer source blob: $actual_blob"
-  echo "Renderer patches: hardware-tested callback-driven triple buffering, rsxkit FIFO reservation and RSX DMA fences, PPC scanout barrier, explicit unsupported paths, and RSX memory accounting"
+  echo "SDL2 video source blob: $video_worktree_blob"
+  echo "RSX initialization: 1 MiB command buffer + 8 MiB shared I/O allocation"
+  echo "Renderer patches: callback-driven triple buffering, rsxkit FIFO reservation and RSX DMA fences, PPC scanout barrier, explicit unsupported paths, and RSX memory accounting"
   echo "PS3 joystick source blob: $actual_joystick_blob"
   echo "Controller patch: initialize pad state and center the four analog axes"
   echo "Controller mapping: DualShock 3 4-axis / 16-button ioPad layout"
