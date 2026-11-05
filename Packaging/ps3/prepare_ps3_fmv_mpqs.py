@@ -194,12 +194,26 @@ def ffprobe_movie(ffprobe: str, source: Path) -> MovieInfo:
     audio = next((stream for stream in streams if stream.get("codec_type") == "audio"), None)
     if video is None:
         raise RuntimeError(f"No video stream found in {source}")
-    try:
-        rate = Fraction(video.get("avg_frame_rate") or video.get("r_frame_rate") or "0/1")
-    except (ValueError, ZeroDivisionError):
-        rate = Fraction(0, 1)
-    if rate <= 0:
-        raise RuntimeError(f"Invalid video frame rate in {source}")
+    # FFprobe can emit "0/0" for avg_frame_rate on Smacker streams even
+    # when r_frame_rate contains the actual stream timing. Do not use a
+    # non-empty but invalid average rate to mask a valid nominal rate.
+    rate: Fraction | None = None
+    reported_rates: list[str] = []
+    for key in ("avg_frame_rate", "r_frame_rate"):
+        raw_rate = video.get(key)
+        reported_rates.append(f"{key}={raw_rate!r}")
+        if raw_rate in (None, "", "N/A"):
+            continue
+        try:
+            candidate = Fraction(str(raw_rate))
+        except (ValueError, ZeroDivisionError):
+            continue
+        if candidate > 0:
+            rate = candidate
+            break
+    if rate is None:
+        details = ", ".join(reported_rates)
+        raise RuntimeError(f"Invalid video frame rate in {source} ({details})")
     try:
         frame_count = int(video.get("nb_read_frames") or video.get("nb_frames") or 0)
     except (TypeError, ValueError):
