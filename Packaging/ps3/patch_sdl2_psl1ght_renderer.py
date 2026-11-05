@@ -94,9 +94,15 @@ static PSL1GHT_RenderData *PSL1GHT_ActiveFlipData;
 static void
 PSL1GHT_FlipHandler(const u32 head)
 {
-    (void)head;
-    if (PSL1GHT_ActiveFlipData != NULL)
-        ++PSL1GHT_ActiveFlipData->flip_completed;
+    PSL1GHT_RenderData *data = PSL1GHT_ActiveFlipData;
+    if (data != NULL) {
+        const u32 completed = ++data->flip_completed;
+        if (completed <= 16 || (completed & 255U) == 0) {
+            SDL_Log("PSL1GHT flip callback: head=%u completed=%u queued=%u",
+                (unsigned int)head, (unsigned int)completed,
+                (unsigned int)data->flip_queued);
+        }
+    }
 }
 
 /* Three buffers: one scanning out, one queued, and one available to draw. */
@@ -111,11 +117,20 @@ PSL1GHT_WaitForFreeBuffer(PSL1GHT_RenderData *data)
     while ((int)(data->flip_queued - data->flip_completed) > PSL1GHT_FB_COUNT - 2) {
         usleep(100);
         if (++waited > 20000) {
-            SDL_Log("PSL1GHT flip callback timeout: queued=%u completed=%u outstanding=%u buffer=%d",
+            /*
+             * Match the proven Xash3D PS3 recovery path. The strict SDL
+             * adaptation used to return false here, silently dropping every
+             * later frame forever after the callback counter stopped.
+             *
+             * Resynchronize the software accounting and continue submitting
+             * flips. This may permit tearing if a callback is genuinely late,
+             * but it prevents a lost callback from freezing presentation.
+             */
+            SDL_Log("PSL1GHT flip callback timeout: queued=%u completed=%u outstanding=%u buffer=%d; force-resynchronizing",
                 (unsigned int)data->flip_queued, (unsigned int)data->flip_completed,
                 (unsigned int)(data->flip_queued - data->flip_completed), data->current_screen);
-            SDL_SetError("PSL1GHT timed out waiting for a free display buffer");
-            return SDL_FALSE;
+            data->flip_completed = data->flip_queued;
+            break;
         }
     }
 
@@ -687,7 +702,9 @@ for required in (
     "gcmSetWaitFlip(data->context)",
     "PSL1GHT_FB_COUNT 3",
     "rsxSetWriteBackendLabel(data->context, PSL1GHT_WAIT_IDLE_LABEL, value)",
-    "PSL1GHT timed out waiting for a free display buffer",
+    "PSL1GHT flip callback timeout: queued=%u completed=%u outstanding=%u buffer=%d; force-resynchronizing",
+    "data->flip_completed = data->flip_queued;",
+    "PSL1GHT flip callback: head=%u completed=%u queued=%u",
     "PSL1GHT timed out waiting for RSX DMA completion",
     "texture_peak_bytes",
     "SDL_Unsupported()",
@@ -695,6 +712,8 @@ for required in (
     if required not in source:
         raise SystemExit(f"error: required PS3 renderer change missing: {required}")
 
+if "PSL1GHT flip callback timeout" in source and "data->flip_completed = data->flip_queued;" not in source:
+    raise SystemExit("error: timed-out flip accounting does not recover")
 if "waitFlip()" in source or "gcmGetFlipStatus()" in source or "gcmResetFlipStatus()" in source:
     raise SystemExit("error: unreliable RSX flip-status polling remains in the patched renderer")
 
