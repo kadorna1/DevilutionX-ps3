@@ -553,6 +553,10 @@ void LoadGameArchives()
 		}
 	}
 
+	// Optional high-priority archive containing browser-generated H.264/PCM
+	// sidecars for PS3 Cell VDEC playback. Original game MPQs remain untouched.
+	LoadMPQ(paths, "devilutionx-vdec", 1100);
+
 	if (!HeadlessMode) {
 		if (!haveDiabdat && !haveSpawn) {
 			LogError("{}", SDL_GetError());

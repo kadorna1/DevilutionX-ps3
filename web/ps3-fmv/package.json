@@ -1,0 +1,19 @@
+{
+  "name": "devilutionx-ps3-fmv-converter",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "copy:core": "node scripts/copy-ffmpeg-core.mjs",
+    "build": "npm run copy:core && vite build",
+    "preview": "vite preview --host 127.0.0.1"
+  },
+  "dependencies": {
+    "@ffmpeg/core": "0.12.10",
+    "@ffmpeg/ffmpeg": "0.12.15",
+    "mopaq": "1.6.2"
+  },
+  "devDependencies": {
+    "vite": "^6.0.0"
+  }
+}

@@ -1,0 +1,59 @@
+name: Deploy PS3 FMV Converter
+
+on:
+  push:
+    branches:
+      - ps3-port
+    paths:
+      - "web/ps3-fmv/**"
+      - "Source/engine/assets.cpp"
+      - ".github/workflows/deploy-ps3-fmv-pages.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ps3-fmv-pages-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build private-by-design browser app
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install and build
+        working-directory: web/ps3-fmv
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+          test -s dist/index.html
+          test -s dist/ffmpeg/ffmpeg-core.js
+          test -s dist/ffmpeg/ffmpeg-core.wasm
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: web/ps3-fmv/dist
+
+  deploy:
+    name: Deploy GitHub Pages
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4

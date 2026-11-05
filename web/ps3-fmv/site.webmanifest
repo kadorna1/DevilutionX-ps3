@@ -1,0 +1,11 @@
+{
+  "name": "DevilutionX PS3 FMV Converter",
+  "short_name": "PS3 FMV",
+  "description": "Local browser conversion of Diablo Smacker FMVs for PS3 Cell VDEC.",
+  "start_url": "/DevilutionX-ps3/",
+  "scope": "/DevilutionX-ps3/",
+  "display": "standalone",
+  "background_color": "#0c111b",
+  "theme_color": "#111827",
+  "icons": []
+}

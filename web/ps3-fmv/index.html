@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; connect-src 'self'; img-src 'self' data: blob:; style-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <meta name="theme-color" content="#101722">
+  <meta name="description" content="Convert Diablo Smacker FMVs for PS3 Cell VDEC locally in your browser.">
+  <link rel="manifest" href="/DevilutionX-ps3/site.webmanifest">
+  <title>DevilutionX PS3 — Local FMV Converter</title>
+</head>
+<body>
+<div id="app">
+  <header class="topbar">
+    <a class="brand" href="./"><span class="brand-mark">D</span><span>DEVILUTIONX <small>PLAYSTATION 3</small></span></a>
+    <span class="local-pill"><i></i> LOCAL PROCESSING</span>
+  </header>
+  <main class="shell">
+    <section class="hero">
+      <p class="eyebrow">CELL VDEC PREPARATION TOOL</p>
+      <h1>Prepare your FMVs.<br><em>Keep your files yours.</em></h1>
+      <p class="intro">Convert Smacker movies inside this browser into a separate H.264/PCM sidecar MPQ for PS3 hardware video playback.</p>
+    </section>
+    <section class="privacy-card">
+      <div class="privacy-icon">⌁</div>
+      <div><strong>Your game archives stay on this device.</strong><p>MPQs are opened and processed in a browser worker. They are never uploaded. Only a new MPQ is downloaded to your computer.</p></div>
+      <b>PRIVATE</b>
+    </section>
+    <section class="workspace">
+      <div class="heading"><div><p class="eyebrow">01 / INPUT</p><h2>Select game archives</h2></div><span>01</span></div>
+      <label class="dropzone" id="dropzone" for="mpq-files">
+        <input id="mpq-files" type="file" accept=".mpq,.MPQ,application/octet-stream" multiple>
+        <span class="plus">＋</span><strong>Drop MPQ files here</strong><span>or <u>browse this device</u></span>
+        <small>DIABDAT.MPQ and any Hellfire MPQs. Nothing is sent to a server.</small>
+      </label>
+      <div id="file-list" class="file-list empty" aria-live="polite">No archives selected.</div>
+      <div class="heading subheading"><div><p class="eyebrow">02 / CONVERSION</p><h2>Build the VDEC archive</h2></div><span>02</span></div>
+      <div class="conversion-info">
+        <div><small>VIDEO</small><strong>H.264 · Annex-B · Baseline · 4:2:0</strong></div>
+        <div><small>AUDIO</small><strong>Signed 16-bit PCM · Big-endian</strong></div>
+        <div><small>OUTPUT</small><strong>devilutionx-vdec.mpq</strong></div>
+        <p>Looks for <code>gendata\logo.smk</code>, <code>gendata\diablo1.smk</code>, and other listed Smacker movies. Original archives are not rewritten.</p>
+      </div>
+      <div class="actions"><button id="convert" class="primary" disabled>Convert locally <span>↗</span></button><button id="clear" class="secondary" disabled>Clear memory</button></div>
+      <section id="progress-panel" class="progress-panel" hidden aria-live="polite">
+        <div class="progress-head"><strong id="progress-title">Preparing browser decoder…</strong><span id="progress-percent">0%</span></div>
+        <div class="track"><div id="progress-bar"></div></div><p id="progress-detail"></p>
+      </section>
+      <section id="result-panel" class="result-panel" hidden>
+        <div class="check">✓</div><div><strong>VDEC archive ready</strong><p id="result-detail"></p><a id="download" download="devilutionx-vdec.mpq">Download devilutionx-vdec.mpq ↓</a></div>
+      </section>
+      <section class="log-panel">
+        <div class="log-head"><div><p class="eyebrow">PROCESS LOG</p><strong>Local conversion activity</strong></div><b>ON THIS DEVICE</b></div>
+        <pre id="log" aria-live="polite">Waiting for MPQ files.</pre>
+      </section>
+    </section>
+    <section class="install-note">
+      <p class="eyebrow">03 / INSTALL</p><h2>Copy one file to your PS3</h2>
+      <p>Copy <code>devilutionx-vdec.mpq</code> beside <code>DIABDAT.MPQ</code> in:</p>
+      <code class="path">/dev_hdd0/game/DEVILUT00/USRDIR/</code>
+      <p>The compatible PS3 build loads this optional archive at higher priority. Keep your original Diablo and Hellfire archives unchanged.</p>
+    </section>
+    <footer><span>DEVILUTIONX · PS3 FMV TOOL</span><span>NO UPLOADS · NO ACCOUNTS · NO ANALYTICS</span><a href="https://github.com/kadorna1/DevilutionX-ps3/tree/ps3-port/web/ps3-fmv">Source & privacy details</a></footer>
+  </main>
+</div>
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>
