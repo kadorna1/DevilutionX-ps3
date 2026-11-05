@@ -86,8 +86,8 @@ static void waitFlip()
 
 /*
  * Hardware-tested callback accounting, following the working Xash3D PS3
- * port. gcmGetFlipStatus() polling can report a flip complete prematurely on
- * real hardware, so the callback is the source of truth for buffer retirement.
+ * port. The callback is the source of truth for buffer retirement on real
+ * hardware, rather than the unreliable status-polling path.
  */
 static PSL1GHT_RenderData *PSL1GHT_ActiveFlipData;
 
@@ -641,7 +641,7 @@ for required in (
     "gcmSetWaitFlip(data->context)",
     "PSL1GHT_FB_COUNT 3",
     "rsxSetWriteBackendLabel(data->context, PSL1GHT_WAIT_IDLE_LABEL, value)",
-    "PSL1GHT timed out waiting for display flip completion",
+    "PSL1GHT timed out waiting for a free display buffer",
     "PSL1GHT timed out waiting for RSX DMA completion",
     "texture_peak_bytes",
     "SDL_Unsupported()",
