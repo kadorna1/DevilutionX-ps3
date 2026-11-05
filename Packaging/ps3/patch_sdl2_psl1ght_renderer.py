@@ -156,14 +156,14 @@ PSL1GHT_RSXContextCallback(gcmContextData *context, u32 count)
     u32 opd = (u32)context->callback;
 
     __asm__ __volatile__(
-        "stdu 1,-128(1)\n\t"
-        "std 2,40(1)\n\t"
-        "lwz 0,0(%2)\n\t"
-        "lwz 2,4(%2)\n\t"
-        "mtctr 0\n\t"
-        "bctrl\n\t"
-        "ld 2,40(1)\n\t"
-        "addi 1,1,128\n\t"
+        "stdu 1,-128(1)\\n\\t"
+        "std 2,40(1)\\n\\t"
+        "lwz 0,0(%2)\\n\\t"
+        "lwz 2,4(%2)\\n\\t"
+        "mtctr 0\\n\\t"
+        "bctrl\\n\\t"
+        "ld 2,40(1)\\n\\t"
+        "addi 1,1,128\\n\\t"
         : "+r"(r3), "+r"(r4)
         : "b"((u64)opd)
         : "r0", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "ctr", "lr", "xer",
