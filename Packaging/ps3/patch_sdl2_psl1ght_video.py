@@ -36,7 +36,7 @@ replace_once(
 )
 
 replace_once(
-    "static void initializeGPU( SDL_DeviceData * devdata);",
+    "static void initializeGPU(SDL_DeviceData * devdata);",
     "static int initializeGPU( SDL_DeviceData * devdata);",
     "initializeGPU declaration",
 )
