@@ -102,7 +102,7 @@ PSL1GHT_WaitForFreeBuffer(PSL1GHT_RenderData *data)
 {
     int waited = 0;
 
-    if (data == NULL || !data->flip_handler_registered || data->first_fb)
+    if (data == NULL)
         return SDL_TRUE;
 
     while (gcmGetFlipStatus() != 0) {
@@ -304,25 +304,6 @@ PSL1GHT_QueueCopyEx(SDL_Renderer * renderer, SDL_RenderCommand *cmd, SDL_Texture
     "rotated/flipped copy unsupported path",
 )
 
-# RunCommandQueue is where queued SDL drawing commands first touch the RSX
-# scanout surface, so the buffer wait must happen before it selects that surface.
-replace_once(
-    """static int
-PSL1GHT_RunCommandQueue(SDL_Renderer * renderer, SDL_RenderCommand *cmd, void *vertices, size_t vertsize)
-{
-    while (cmd) {""",
-    """static int
-PSL1GHT_RunCommandQueue(SDL_Renderer * renderer, SDL_RenderCommand *cmd, void *vertices, size_t vertsize)
-{
-    PSL1GHT_RenderData *data = (PSL1GHT_RenderData *)renderer->driverdata;
-
-    if (!PSL1GHT_WaitForFreeBuffer(data))
-        return -1;
-
-    while (cmd) {""",
-    "pre-render framebuffer wait",
-)
-
 replace_once(
     """            case SDL_RENDERCMD_COPY_EX: {
                 break;
@@ -363,24 +344,27 @@ PSL1GHT_RenderPresent(SDL_Renderer * renderer)
     PSL1GHT_RenderData *data = (PSL1GHT_RenderData *) renderer->driverdata;
 
     /*
-     * RunCommandQueue waits before drawing. Keep this second guard for
-     * presents with an empty command queue, where SDL does not call it.
+     * Keep PSL1GHT's original order: reset once, submit the flip, flush,
+     * queue the RSX vblank wait, then wait for gcmGetFlipStatus to clear.
+     * Waiting before gcmSetWaitFlip leaves the status latched on real hardware.
      */
-    if (!PSL1GHT_WaitForFreeBuffer(data))
-        return;
+    if (data->first_fb)
+        gcmResetFlipStatus();
 
-    /* Follow the PSL1GHT guide: submit the flip, flush it, then queue vblank wait. */
     gcmSetFlip(data->context, data->current_screen);
     ++data->flip_queued;
     rsxFlushBuffer(data->context);
     gcmSetWaitFlip(data->context);
+
+    if (!PSL1GHT_WaitForFreeBuffer(data))
+        return;
 
     data->first_fb = false;
 
     // Update the flipping chain, if any
     data->current_screen = (data->current_screen + 1) % 2;
 }""",
-    "callback-driven RenderPresent",
+    "PSL1GHT RenderPresent flip completion order",
 )
 
 replace_once(
