@@ -43,7 +43,6 @@ replace_once(
     gcmContextData *context; // Context to keep track of the RSX buffer.
     volatile u32 flip_queued;
     volatile u32 flip_completed;
-    bool flip_pending;
     volatile u32 *idle_label;
     u32 idle_fence_value;
     size_t display_bytes;
@@ -85,11 +84,13 @@ static void waitFlip()
 #define PSL1GHT_WAIT_IDLE_LABEL 255
 
 #define PSL1GHT_FB_COUNT 3
+#define PSL1GHT_FLIP_WAIT_SLEEP_US 100
+#define PSL1GHT_FLIP_WAIT_MAX_POLLS 20000
 
 /*
- * Keep flip-completion callbacks as telemetry. Buffer reuse is synchronized
- * by the PPU-side GCM flip-status wait below, so a delayed or missing callback
- * cannot authorize reuse of a buffer and cannot freeze presentation.
+ * The GCM flip callback is the hardware completion signal. gcmGetFlipStatus()
+ * polling is intentionally not used: the hardware-tested Xash3D PS3 backend
+ * found that status polling did not reliably throttle real-console flips.
  */
 static PSL1GHT_RenderData *PSL1GHT_ActiveFlipData;
 
@@ -102,64 +103,58 @@ PSL1GHT_FlipHandler(const u32 head)
 }
 
 /*
- * Keep the RSX command stream free-running across flips. Do not enqueue
- * gcmSetWaitFlip(): it blocks the RSX FIFO at the flip semaphore and can
- * prevent the PS3 system from servicing overlays / completing later work.
- *
- * Instead, wait on the PPU before the CPU reuses the next scanout buffer.
- * This follows the current rsxkit frame loop: gcmSetFlip + rsxFlushBuffer,
- * then gcmGetFlipStatus/gcmResetFlipStatus before touching the next buffer.
- * The flip callback remains telemetry only; it is not allowed to invent
- * completion or decide whether a framebuffer is safe to overwrite.
+ * Wait until at most max_outstanding flips remain. With three registered
+ * scanout buffers, one flip may remain in flight while the PPU draws into the
+ * third buffer; waiting for zero here would unnecessarily serialize frames.
  */
 static SDL_bool
-PSL1GHT_WaitForFreeBuffer(PSL1GHT_RenderData *data)
+PSL1GHT_WaitForFlipCount(PSL1GHT_RenderData *data, u32 max_outstanding,
+                         const char *operation)
 {
     int waited = 0;
-    u32 status = 0;
+    u32 outstanding;
 
-    if (data == NULL || !data->flip_pending)
-        return SDL_TRUE;
+    if (data == NULL) {
+        SDL_SetError("PSL1GHT flip tracking is unavailable");
+        return SDL_FALSE;
+    }
 
-    while ((status = gcmGetFlipStatus()) != 0) {
-        usleep(200);
-        if (++waited > 10000) {
-            SDL_Log("PSL1GHT PPU flip wait timeout: status=%u queued=%u callback_completed=%u buffer=%d waited_ms=%u",
-                (unsigned int)status, (unsigned int)data->flip_queued,
-                (unsigned int)data->flip_completed, data->current_screen,
-                (unsigned int)(waited * 200 / 1000));
-            SDL_SetError("PSL1GHT timed out waiting for the previous display flip");
+    while ((s32)(data->flip_queued - data->flip_completed)
+           > (s32)max_outstanding) {
+        usleep(PSL1GHT_FLIP_WAIT_SLEEP_US);
+        if (++waited > PSL1GHT_FLIP_WAIT_MAX_POLLS) {
+            outstanding = data->flip_queued - data->flip_completed;
+            SDL_Log("PSL1GHT callback flip wait timeout: operation=%s queued=%u callback_completed=%u outstanding=%u buffer=%d waited_ms=%u",
+                operation, (unsigned int)data->flip_queued,
+                (unsigned int)data->flip_completed, (unsigned int)outstanding,
+                data->current_screen,
+                (unsigned int)(waited * PSL1GHT_FLIP_WAIT_SLEEP_US / 1000));
+            SDL_SetError("PSL1GHT timed out waiting for display flip callback");
             return SDL_FALSE;
         }
     }
 
-    /* The hardware reports the previous flip complete; retire its status. */
-    gcmResetFlipStatus();
-    data->flip_pending = false;
-
-    /*
-     * A missing callback must not stall rendering when hardware flip status
-     * says the buffer is free. Keep reporting the discrepancy so a future
-     * hardware log can distinguish callback delivery from actual flip status.
-     */
-    if (data->flip_completed != data->flip_queued
-        && (data->flip_queued <= 16 || (data->flip_queued & 127U) == 0)) {
-        SDL_Log("PSL1GHT flip callback behind hardware status: queued=%u callback_completed=%u",
-            (unsigned int)data->flip_queued, (unsigned int)data->flip_completed);
-    }
-
-    /* The PS3 system may change flip mode while drawing overlays. */
-    gcmSetFlipMode(GCM_FLIP_VSYNC);
     return SDL_TRUE;
+}
+
+static SDL_bool
+PSL1GHT_WaitForFreeBuffer(PSL1GHT_RenderData *data)
+{
+    return PSL1GHT_WaitForFlipCount(data, PSL1GHT_FB_COUNT - 2,
+                                    "scanout buffer reuse");
 }
 
 static SDL_bool
 PSL1GHT_WaitForAllFlips(PSL1GHT_RenderData *data)
 {
-    return PSL1GHT_WaitForFreeBuffer(data);
+    return PSL1GHT_WaitForFlipCount(data, 0, "renderer destruction");
 }
 
 /*
+ * Adapted from rsxkit/src/fifo.c (MIT): call the PSL1GHT context callback
+ * with a real memory clobber. Its stock command macros can otherwise invoke
+ * a callback that changes context->current without informing the compiler.
+ *//*
  * Adapted from rsxkit/src/fifo.c (MIT): call the PSL1GHT context callback
  * with a real memory clobber. Its stock command macros can otherwise invoke
  * a callback that changes context->current without informing the compiler.
@@ -444,28 +439,6 @@ PSL1GHT_RenderPresent(SDL_Renderer * renderer)
 {
     PSL1GHT_RenderData *data = (PSL1GHT_RenderData *) renderer->driverdata;
 
-    if (data->first_fb)
-    {
-        gcmResetFlipStatus();
-    }
-
-    gcmSetFlip(data->context, data->current_screen);
-    rsxFlushBuffer(data->context);
-
-    gcmSetWaitFlip(data->context);
-
-    waitFlip();
-
-    data->first_fb = false;
-
-    // Update the flipping chain, if any
-    data->current_screen = (data->current_screen + 1) % 2;
-}""",
-    """static void
-PSL1GHT_RenderPresent(SDL_Renderer * renderer)
-{
-    PSL1GHT_RenderData *data = (PSL1GHT_RenderData *) renderer->driverdata;
-
     /*
      * The draw buffer is acquired by PSL1GHT_ActivateRenderer before any
      * software drawing takes place. If this frame did not draw, acquire it
@@ -477,17 +450,16 @@ PSL1GHT_RenderPresent(SDL_Renderer * renderer)
         data->draw_buffer_acquired = true;
     }
 
-    /*
-     * Publish CPU writes to the RSX-local scanout buffer before the RSX
-     * consumes it. This is required after the SDL software-surface writes.
-     */
+    /* Publish CPU writes to the RSX-local scanout buffer before scanout. */
     __asm__ __volatile__("sync" ::: "memory");
 
     /*
-     * Queue a flip without gcmSetWaitFlip. The RSX FIFO must not stop at the
-     * flip semaphore; the PPU waits for completion before the next draw.
+     * Match the hardware-validated Xash3D PS3 order: WaitFlip, SetFlip,
+     * Flush. Waiting is placed before the flip command so the RSX does not
+     * stop at a semaphore after the flip has already been queued.
      */
     PSL1GHT_ReserveRSXWords(data->context, 32);
+    gcmSetWaitFlip(data->context);
     const s32 flipResult = gcmSetFlip(data->context, data->current_screen);
     if (flipResult != 0) {
         SDL_Log("PSL1GHT gcmSetFlip failed: 0x%08x", (unsigned int)flipResult);
@@ -497,7 +469,6 @@ PSL1GHT_RenderPresent(SDL_Renderer * renderer)
 
     rsxFlushBuffer(data->context);
     ++data->flip_queued;
-    data->flip_pending = true;
     if (data->flip_queued <= 16 || (data->flip_queued & 255U) == 0) {
         SDL_Log("PSL1GHT flip submitted: buffer=%d queued=%u completed=%u",
             data->current_screen, (unsigned int)data->flip_queued,
@@ -507,12 +478,9 @@ PSL1GHT_RenderPresent(SDL_Renderer * renderer)
     data->first_fb = false;
     data->current_screen = (data->current_screen + 1) % PSL1GHT_FB_COUNT;
     data->draw_buffer_acquired = false;
-}""",
-    "PSL1GHT RenderPresent previous-frame flip completion order",
-)
+}
 
-replace_once(
-    """static void
+static void
 PSL1GHT_DestroyTexture(SDL_Renderer * renderer, SDL_Texture * texture)
 {
     SDL_Surface *surface = (SDL_Surface *) texture->driverdata;
@@ -738,8 +706,8 @@ PSL1GHT_CreateTexture(SDL_Renderer * renderer, SDL_Texture * texture)
 
 replace_once(old_create, new_create, "RSX texture allocation guard and accounting")
 
-# The generated source must use the PPU-side flip wait and must not retain
-# the command-stream semaphore or fake callback completion recovery.
+# The generated source must use the registered hardware flip callback as its
+# completion fence, retain triple-buffer headroom, and never fake completion.
 for required in (
     "PSL1GHT_WaitForFreeBuffer(data)",
     "bool draw_buffer_acquired;",
@@ -747,12 +715,10 @@ for required in (
     "data->draw_buffer_acquired = false;",
     "PSL1GHT_WaitForAllFlips(data)",
     "gcmSetFlipHandler(PSL1GHT_FlipHandler)",
-    "gcmGetFlipStatus()",
-    "gcmResetFlipStatus()",
-    "data->flip_pending = true;",
-    "PSL1GHT flip callback behind hardware status: queued=%u callback_completed=%u",
-    "PSL1GHT PPU flip wait timeout: status=%u",
+    "data->flip_queued - data->flip_completed",
+    "PSL1GHT callback flip wait timeout:",
     "PSL1GHT_FB_COUNT 3",
+    "gcmSetWaitFlip(data->context)",
     "PSL1GHT_ReserveRSXWords(data->context, 16)",
     "PSL1GHT_ReserveRSXWords(data->context, 32)",
     "rsxSetWriteBackendLabel(data->context, PSL1GHT_WAIT_IDLE_LABEL, value)",
@@ -765,15 +731,24 @@ for required in (
         raise SystemExit(f"error: required PS3 renderer change missing: {required}")
 
 for forbidden in (
-    "gcmSetWaitFlip(data->context)",
+    "gcmGetFlipStatus()",
+    "gcmResetFlipStatus()",
+    "flip_pending",
     "force-resynchronizing",
     "data->flip_completed = data->flip_queued;",
 ):
     if forbidden in source:
         raise SystemExit(f"error: obsolete or unsafe flip synchronization remains: {forbidden}")
 
+present_start = source.index("PSL1GHT_RenderPresent(SDL_Renderer * renderer)")
+waitflip_pos = source.index("gcmSetWaitFlip(data->context)", present_start)
+setflip_pos = source.index("gcmSetFlip(data->context, data->current_screen)", present_start)
+flush_pos = source.index("rsxFlushBuffer(data->context)", setflip_pos)
+if not (waitflip_pos < setflip_pos < flush_pos):
+    raise SystemExit("error: flip command order must be gcmSetWaitFlip -> gcmSetFlip -> rsxFlushBuffer")
+
 if "static void waitFlip()" in source:
     raise SystemExit("error: obsolete SDL2 waitFlip helper remains in the patched renderer")
 
 path.write_text(source, encoding="utf-8")
-print("Applied PPU-side flip-status synchronization, callback telemetry, rsxkit RSX DMA fences, renderer capability fixes, and RSX memory accounting")
+print("Applied callback-driven triple-buffer synchronization, hardware-validated flip command order, rsxkit RSX DMA fences, renderer capability fixes, and RSX memory accounting")

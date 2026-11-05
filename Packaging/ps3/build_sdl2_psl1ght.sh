@@ -94,18 +94,32 @@ python3 "$ROOT/Packaging/ps3/patch_sdl2_psl1ght_renderer.py" "$SDL2_SOURCE/$SDL2
 grep -Fq "gcmSetFlipHandler(PSL1GHT_FlipHandler)" "$SDL2_SOURCE/$SDL2_RENDERER"
 grep -Fq "PSL1GHT_FB_COUNT 3" "$SDL2_SOURCE/$SDL2_RENDERER"
 grep -Fq "PSL1GHT_WaitForAllFlips(data)" "$SDL2_SOURCE/$SDL2_RENDERER"
-grep -Fq "gcmGetFlipStatus()" "$SDL2_SOURCE/$SDL2_RENDERER"
-grep -Fq "gcmResetFlipStatus()" "$SDL2_SOURCE/$SDL2_RENDERER"
-grep -Fq "data->flip_pending = true" "$SDL2_SOURCE/$SDL2_RENDERER"
+grep -Fq "data->flip_queued - data->flip_completed" "$SDL2_SOURCE/$SDL2_RENDERER"
+grep -Fq "PSL1GHT callback flip wait timeout:" "$SDL2_SOURCE/$SDL2_RENDERER"
+grep -Fq "gcmSetWaitFlip(data->context)" "$SDL2_SOURCE/$SDL2_RENDERER"
 grep -Fq "PSL1GHT_ReserveRSXWords(data->context, 16)" "$SDL2_SOURCE/$SDL2_RENDERER"
 grep -Fq "PSL1GHT_ReserveRSXWords(data->context, 32)" "$SDL2_SOURCE/$SDL2_RENDERER"
 grep -Fq "rsxSetWriteBackendLabel(data->context, PSL1GHT_WAIT_IDLE_LABEL, value)" "$SDL2_SOURCE/$SDL2_RENDERER"
-if grep -Fq "gcmSetWaitFlip(data->context)" "$SDL2_SOURCE/$SDL2_RENDERER"; then
-  echo "error: blocking command-stream gcmSetWaitFlip remains in SDL2 renderer" >&2
+if grep -Fq "gcmGetFlipStatus()" "$SDL2_SOURCE/$SDL2_RENDERER" || grep -Fq "gcmResetFlipStatus()" "$SDL2_SOURCE/$SDL2_RENDERER"; then
+  echo "error: unreliable GCM flip-status polling remains in SDL2 renderer" >&2
   exit 1
 fi
 if grep -Fq "force-resynchronizing" "$SDL2_SOURCE/$SDL2_RENDERER"; then
   echo "error: fake flip-completion counter recovery remains in SDL2 renderer" >&2
+  exit 1
+fi
+if ! python3 - "$SDL2_SOURCE/$SDL2_RENDERER" <<'PY'
+from pathlib import Path
+import sys
+source = Path(sys.argv[1]).read_text(encoding="utf-8")
+start = source.index("PSL1GHT_RenderPresent(SDL_Renderer * renderer)")
+waitflip = source.index("gcmSetWaitFlip(data->context)", start)
+setflip = source.index("gcmSetFlip(data->context, data->current_screen)", start)
+flush = source.index("rsxFlushBuffer(data->context)", setflip)
+raise SystemExit(0 if waitflip < setflip < flush else 1)
+PY
+then
+  echo "error: renderer flip command order must be WaitFlip -> SetFlip -> Flush" >&2
   exit 1
 fi
 
@@ -149,7 +163,7 @@ test -s "$SDL2_ARCHIVE" || {
   echo "SDL2 renderer source blob: $actual_blob"
   echo "SDL2 video source blob: $video_worktree_blob"
   echo "RSX initialization: 1 MiB command buffer + 8 MiB shared I/O allocation"
-  echo "Renderer patches: PPU-side flip-status wait (no FIFO wait-flip semaphore), callback telemetry, triple buffering, rsxkit FIFO reservation and RSX DMA fences, PPC scanout barrier, explicit unsupported paths, and RSX memory accounting"
+  echo "Renderer patches: callback-authoritative triple-buffer flip fencing, hardware-validated WaitFlip -> SetFlip -> Flush order, rsxkit FIFO reservation and RSX DMA fences, PPC scanout barrier, explicit unsupported paths, and RSX memory accounting"
   echo "PS3 joystick source blob: $actual_joystick_blob"
   echo "Controller patch: initialize pad state and center the four analog axes"
   echo "Controller mapping: DualShock 3 4-axis / 16-button ioPad layout"
