@@ -98,17 +98,26 @@ grep -Fq "data->flip_queued - data->flip_completed" "$SDL2_SOURCE/$SDL2_RENDERER
 grep -Fq "PSL1GHT callback flip wait timeout:" "$SDL2_SOURCE/$SDL2_RENDERER"
 grep -Fq "flip_wait_failed" "$SDL2_SOURCE/$SDL2_RENDERER"
 grep -Fq "gcmSetFlip(data->context, data->current_screen)" "$SDL2_SOURCE/$SDL2_RENDERER"
-grep -Fq "gcmSetWaitFlip(data->context)" "$SDL2_SOURCE/$SDL2_RENDERER"
 python3 - "$SDL2_SOURCE/$SDL2_RENDERER" <<'PY'
 import pathlib
 import sys
 
 renderer = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
-wait_flip = renderer.find("gcmSetWaitFlip(data->context);")
-set_flip = renderer.find("const s32 flipResult = gcmSetFlip(data->context, data->current_screen);")
+copy = renderer.find("PSL1GHT_RenderCopy(SDL_Renderer * renderer, SDL_Texture * texture,")
+transfer_reserve = renderer.find("if (!PSL1GHT_ReserveRSXWords(data->context, 32))", copy)
+transfer_mode = renderer.find("rsxSetTransferScaleMode(data->context", transfer_reserve)
+transfer_surface = renderer.find("rsxSetTransferScaleSurface(data->context", transfer_mode)
+present = renderer.find("PSL1GHT_RenderPresent(SDL_Renderer * renderer)")
+flip_reserve = renderer.find("if (!PSL1GHT_ReserveRSXWords(data->context, 32))", present)
+set_flip = renderer.find("gcmSetFlip(data->context, data->current_screen);", present)
 flush = renderer.find("rsxFlushBuffer(data->context);", set_flip)
-if not (0 <= wait_flip < set_flip < flush):
-    raise SystemExit("error: SDL2 RSX flip order must be WaitFlip -> SetFlip -> Flush")
+
+if not (0 <= copy < transfer_reserve < transfer_mode < transfer_surface):
+    raise SystemExit("error: transfer-scale methods must be pre-reserved as one FIFO packet")
+if not (0 <= present < flip_reserve < set_flip < flush):
+    raise SystemExit("error: flip must be pre-reserved and flushed asynchronously")
+if "gcmSetWaitFlip(data->context)" in renderer:
+    raise SystemExit("error: GPU-side WaitFlip must not remain in the RSX FIFO")
 PY
 grep -Fq "PSL1GHT_ReserveRSXWords(data->context, 16)" "$SDL2_SOURCE/$SDL2_RENDERER"
 grep -Fq "PSL1GHT_ReserveRSXWords(data->context, 32)" "$SDL2_SOURCE/$SDL2_RENDERER"
@@ -162,7 +171,7 @@ test -s "$SDL2_ARCHIVE" || {
   echo "SDL2 renderer source blob: $actual_blob"
   echo "SDL2 video source blob: $video_worktree_blob"
   echo "RSX initialization: 1 MiB command buffer + 8 MiB shared I/O allocation"
-  echo "Renderer patches: callback-authoritative triple-buffer PPU fence, hardware-tested WaitFlip -> SetFlip -> Flush ordering, latched flip-wait failures, rsxkit FIFO reservation and RSX DMA fences, PPC scanout barrier, explicit unsupported paths, and RSX memory accounting"
+  echo "Renderer patches: callback-authoritative triple-buffer PPU fence, pre-reserved RSX transfer/flip/DMA packets, asynchronous SetFlip -> Flush presentation, checked FIFO rollover, latched flip-wait failures, rsxkit FIFO callback bridge and RSX DMA fences, PPC scanout barrier, explicit unsupported paths, and RSX memory accounting"
   echo "PS3 joystick source blob: $actual_joystick_blob"
   echo "Controller patch: initialize pad state and center the four analog axes"
   echo "Controller mapping: DualShock 3 4-axis / 16-button ioPad layout"

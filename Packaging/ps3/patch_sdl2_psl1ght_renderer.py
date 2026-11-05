@@ -186,13 +186,29 @@ PSL1GHT_RSXContextCallback(gcmContextData *context, u32 count)
     return (s32)r3;
 }
 
-/* Reserve command-buffer space before PSL1GHT writes its label command. */
-static void
+/* Reserve FIFO space explicitly before each multi-method RSX packet.
+ * Fail closed if the context callback cannot provide a complete contiguous
+ * packet; callers must not write through an invalid or stale command pointer.
+ */
+static SDL_bool
 PSL1GHT_ReserveRSXWords(gcmContextData *context, u32 words)
 {
-    if (context == NULL || context->current + words <= context->end)
-        return;
-    (void)PSL1GHT_RSXContextCallback(context, words);
+    if (context == NULL || context->current == NULL || context->end == NULL) {
+        SDL_SetError("PSL1GHT RSX command buffer is unavailable");
+        return SDL_FALSE;
+    }
+
+    if (context->current + words <= context->end)
+        return SDL_TRUE;
+
+    if (PSL1GHT_RSXContextCallback(context, words) != 0
+        || context->current == NULL || context->end == NULL
+        || context->current + words > context->end) {
+        SDL_SetError("PSL1GHT could not reserve RSX command-buffer space");
+        return SDL_FALSE;
+    }
+
+    return SDL_TRUE;
 }
 
 /*
@@ -215,7 +231,8 @@ PSL1GHT_WaitForRSXIdle(PSL1GHT_RenderData *data, const char *operation)
     if (value == 0)
         value = ++data->idle_fence_value;
 
-    PSL1GHT_ReserveRSXWords(data->context, 16);
+    if (!PSL1GHT_ReserveRSXWords(data->context, 16))
+        return SDL_FALSE;
     rsxSetWriteBackendLabel(data->context, PSL1GHT_WAIT_IDLE_LABEL, value);
     rsxFlushBuffer(data->context);
 
@@ -438,6 +455,23 @@ replace_once(
 )
 
 replace_once(
+    """    // Hardware accelerated blit with scaling
+    rsxSetTransferScaleMode(data->context, GCM_TRANSFER_LOCAL_TO_LOCAL, GCM_TRANSFER_SURFACE);
+    rsxSetTransferScaleSurface(data->context, &scale, &surface);""",
+    """    /*
+     * PSL1GHT emits 6 words for TransferScaleMode and 20 for
+     * TransferScaleSurface. Reserve the complete 26-word packet before
+     * either API call so the automatic rollover callback cannot split it.
+     */
+    if (!PSL1GHT_ReserveRSXWords(data->context, 32))
+        return -1;
+
+    rsxSetTransferScaleMode(data->context, GCM_TRANSFER_LOCAL_TO_LOCAL, GCM_TRANSFER_SURFACE);
+    rsxSetTransferScaleSurface(data->context, &scale, &surface);""",
+    "RSX transfer packet reservation",
+)
+
+replace_once(
     """static void
 PSL1GHT_RenderPresent(SDL_Renderer * renderer)
 {
@@ -480,14 +514,13 @@ PSL1GHT_RenderPresent(SDL_Renderer * renderer)
     __asm__ __volatile__("sync" ::: "memory");
 
     /*
-     * Keep each flip synchronized with the display refresh. The sequence
-     * validated on real PS3 hardware is WaitFlip before SetFlip, then Flush.
-     * Omitting WaitFlip (or placing it after SetFlip) can leave two flips
-     * outstanding and stop subsequent scanout updates. The PPU callback
-     * fence still protects CPU reuse of scanout buffers.
+     * Keep the RSX FIFO asynchronous. A GPU-side WaitFlip command can block
+     * the command processor while the PPU waits for scanout completion,
+     * preventing later DMA fences and system-overlay work from draining.
+     * The PPU callback fence protects CPU reuse without a FIFO wait.
      */
-    PSL1GHT_ReserveRSXWords(data->context, 32);
-    gcmSetWaitFlip(data->context);
+    if (!PSL1GHT_ReserveRSXWords(data->context, 32))
+        return;
     const s32 flipResult = gcmSetFlip(data->context, data->current_screen);
     if (flipResult != 0) {
         SDL_Log("PSL1GHT gcmSetFlip failed: 0x%08x", (unsigned int)flipResult);
@@ -507,7 +540,7 @@ PSL1GHT_RenderPresent(SDL_Renderer * renderer)
     data->current_screen = (data->current_screen + 1) % PSL1GHT_FB_COUNT;
     data->draw_buffer_acquired = false;
 }""",
-    "PSL1GHT RenderPresent previous-frame flip completion order",
+    "PSL1GHT RenderPresent asynchronous flip completion order",
 )
 
 replace_once(
@@ -738,15 +771,16 @@ PSL1GHT_CreateTexture(SDL_Renderer * renderer, SDL_Texture * texture)
 replace_once(old_create, new_create, "RSX texture allocation guard and accounting")
 
 # The generated source must use the registered hardware flip callback as its
-# completion fence, retain triple-buffer headroom, and use WaitFlip -> SetFlip
-# -> Flush ordering, without faking completion.
+# completion fence, reserve every multi-method FIFO packet before emission,
+# keep presentation asynchronous, and never fake completion.
 for required in (
     "PSL1GHT_WaitForFreeBuffer(data)",
     "bool draw_buffer_acquired;",
     "data->draw_buffer_acquired = true;",
     "data->draw_buffer_acquired = false;",
     "PSL1GHT_WaitForAllFlips(data)",
-    "gcmSetWaitFlip(data->context)",
+    "rsxSetTransferScaleMode(data->context, GCM_TRANSFER_LOCAL_TO_LOCAL, GCM_TRANSFER_SURFACE)",
+    "rsxSetTransferScaleSurface(data->context, &scale, &surface)",
     "gcmSetFlipHandler(PSL1GHT_FlipHandler)",
     "data->flip_queued - data->flip_completed",
     "PSL1GHT callback flip wait timeout:",
@@ -754,6 +788,8 @@ for required in (
     "flip_wait_failed",
     "PSL1GHT_ReserveRSXWords(data->context, 16)",
     "PSL1GHT_ReserveRSXWords(data->context, 32)",
+    "if (!PSL1GHT_ReserveRSXWords(data->context, 16))",
+    "if (!PSL1GHT_ReserveRSXWords(data->context, 32))",
     "rsxSetWriteBackendLabel(data->context, PSL1GHT_WAIT_IDLE_LABEL, value)",
     "PSL1GHT flip submitted: buffer=%d queued=%u completed=%u",
     "PSL1GHT timed out waiting for RSX DMA completion",
@@ -769,6 +805,7 @@ for forbidden in (
     "flip_pending",
     "force-resynchronizing",
     "data->flip_completed = data->flip_queued;",
+    "gcmSetWaitFlip(data->context)",
 ):
     if forbidden in source:
         raise SystemExit(f"error: obsolete or unsafe flip synchronization remains: {forbidden}")
@@ -777,4 +814,4 @@ if "static void waitFlip()" in source:
     raise SystemExit("error: obsolete SDL2 waitFlip helper remains in the patched renderer")
 
 path.write_text(source, encoding="utf-8")
-print("Applied callback-driven triple-buffer synchronization with hardware-tested WaitFlip -> SetFlip -> Flush ordering, latched flip-fence failures, rsxkit RSX DMA fences, renderer capability fixes, and RSX memory accounting")
+print("Applied callback-driven triple-buffer synchronization, pre-reserved RSX transfer/flip/DMA packets, asynchronous SetFlip -> Flush presentation, checked FIFO rollover, latched flip-fence failures, RSX DMA fences, renderer capability fixes, and RSX memory accounting")
