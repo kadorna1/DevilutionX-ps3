@@ -94,15 +94,9 @@ static PSL1GHT_RenderData *PSL1GHT_ActiveFlipData;
 static void
 PSL1GHT_FlipHandler(const u32 head)
 {
-    PSL1GHT_RenderData *data = PSL1GHT_ActiveFlipData;
-    if (data != NULL) {
-        const u32 completed = ++data->flip_completed;
-        if (completed <= 16 || (completed & 255U) == 0) {
-            SDL_Log("PSL1GHT flip callback: head=%u completed=%u queued=%u",
-                (unsigned int)head, (unsigned int)completed,
-                (unsigned int)data->flip_queued);
-        }
-    }
+    (void)head;
+    if (PSL1GHT_ActiveFlipData != NULL)
+        ++PSL1GHT_ActiveFlipData->flip_completed;
 }
 
 /* Three buffers: one scanning out, one queued, and one available to draw. */
@@ -459,6 +453,11 @@ PSL1GHT_RenderPresent(SDL_Renderer * renderer)
 
     rsxFlushBuffer(data->context);
     ++data->flip_queued;
+    if (data->flip_queued <= 16 || (data->flip_queued & 255U) == 0) {
+        SDL_Log("PSL1GHT flip submitted: buffer=%d queued=%u completed=%u",
+            data->current_screen, (unsigned int)data->flip_queued,
+            (unsigned int)data->flip_completed);
+    }
 
     data->first_fb = false;
     data->current_screen = (data->current_screen + 1) % PSL1GHT_FB_COUNT;
@@ -704,7 +703,7 @@ for required in (
     "rsxSetWriteBackendLabel(data->context, PSL1GHT_WAIT_IDLE_LABEL, value)",
     "PSL1GHT flip callback timeout: queued=%u completed=%u outstanding=%u buffer=%d; force-resynchronizing",
     "data->flip_completed = data->flip_queued;",
-    "PSL1GHT flip callback: head=%u completed=%u queued=%u",
+    "PSL1GHT flip submitted: buffer=%d queued=%u completed=%u",
     "PSL1GHT timed out waiting for RSX DMA completion",
     "texture_peak_bytes",
     "SDL_Unsupported()",
