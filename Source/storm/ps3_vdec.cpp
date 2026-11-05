@@ -99,7 +99,6 @@ struct VdecMovieState {
 	Uint32 startTicks = 0;
 
 	SDL_mutex *mutex = nullptr;
-	SDL_cond *condition = nullptr;
 	bool accessUnitDone = false;
 	bool frameReady = false;
 	bool sequenceDone = false;
@@ -379,7 +378,6 @@ void SetCallbackError(VdecMovieState *state, int error)
 		return;
 	SDL_LockMutex(state->mutex);
 	state->callbackError = error == 0 ? -1 : error;
-	SDL_CondBroadcast(state->condition);
 	SDL_UnlockMutex(state->mutex);
 }
 
@@ -393,7 +391,6 @@ u32 VdecMovieCallback(u32 handle, u32 messageType, u32 messageData, u32 argument
 	case VDEC_CALLBACK_AUDONE:
 		SDL_LockMutex(state->mutex);
 		state->accessUnitDone = true;
-		SDL_CondBroadcast(state->condition);
 		SDL_UnlockMutex(state->mutex);
 		break;
 	case VDEC_CALLBACK_PICOUT: {
@@ -430,14 +427,12 @@ u32 VdecMovieCallback(u32 handle, u32 messageType, u32 messageData, u32 argument
 		state->codedWidth = width;
 		state->codedHeight = height;
 		state->frameReady = true;
-		SDL_CondBroadcast(state->condition);
 		SDL_UnlockMutex(state->mutex);
 		break;
 	}
 	case VDEC_CALLBACK_SEQDONE:
 		SDL_LockMutex(state->mutex);
 		state->sequenceDone = true;
-		SDL_CondBroadcast(state->condition);
 		SDL_UnlockMutex(state->mutex);
 		break;
 	case VDEC_CALLBACK_ERROR:
@@ -453,10 +448,8 @@ bool OpenVdecDecoder(VdecMovieState &state)
 {
 	if (state.mutex == nullptr)
 		state.mutex = SDL_CreateMutex();
-	if (state.condition == nullptr)
-		state.condition = SDL_CreateCond();
-	if (state.mutex == nullptr || state.condition == nullptr) {
-		LogError("PS3 VDEC: could not create callback synchronization objects: {}", SDL_GetError());
+	if (state.mutex == nullptr) {
+		LogError("PS3 VDEC: could not create callback mutex: {}", SDL_GetError());
 		return false;
 	}
 
@@ -614,19 +607,23 @@ bool EndVdecSequenceAndWait(VdecMovieState &state)
 		LogWarn("PS3 VDEC: vdecEndSequence returned 0x{:08x}", static_cast<unsigned int>(endResult));
 		return false;
 	}
+
+	// The semaphore-backed SDL2 condition variable can fail in sysSemWait on
+	// PSL1GHT before a VDEC callback arrives. Poll callback state under the
+	// existing mutex instead, keeping the asynchronous wait bounded.
 	const Uint32 start = SDL_GetTicks();
-	SDL_LockMutex(state.mutex);
-	while (!state.sequenceDone && SDL_GetTicks() - start < VdecTimeoutMs) {
-		const Uint32 elapsed = SDL_GetTicks() - start;
-		const Uint32 remaining = VdecTimeoutMs - elapsed;
-		if (SDL_CondWaitTimeout(state.condition, state.mutex, remaining) != 0)
+	for (;;) {
+		SDL_LockMutex(state.mutex);
+		const bool complete = state.sequenceDone;
+		SDL_UnlockMutex(state.mutex);
+		if (complete)
+			return true;
+		if (SDL_GetTicks() - start >= VdecTimeoutMs)
 			break;
+		SDL_Delay(1);
 	}
-	const bool complete = state.sequenceDone;
-	SDL_UnlockMutex(state.mutex);
-	if (!complete)
-		LogWarn("PS3 VDEC: sequence-end callback timed out");
-	return complete;
+	LogWarn("PS3 VDEC: sequence-end callback timed out");
+	return false;
 }
 
 bool RestartVdecSequence(VdecMovieState &state)
@@ -687,10 +684,6 @@ void DestroyVdecMovieState(VdecMovieState &state, bool restoreTexture)
 	CloseVdecDecoder(state);
 	if (restoreTexture)
 		RestoreGameTexture(state);
-	if (state.condition != nullptr) {
-		SDL_DestroyCond(state.condition);
-		state.condition = nullptr;
-	}
 	if (state.mutex != nullptr) {
 		SDL_DestroyMutex(state.mutex);
 		state.mutex = nullptr;
@@ -739,25 +732,28 @@ bool ReplaceMovieTexture(VdecMovieState &state)
 bool WaitForDecodedAccessUnit(VdecMovieState &state)
 {
 	const Uint32 start = SDL_GetTicks();
-	SDL_LockMutex(state.mutex);
-	while ((!state.accessUnitDone || !state.frameReady) && state.callbackError == 0) {
-		const Uint32 elapsed = SDL_GetTicks() - start;
-		if (elapsed >= VdecTimeoutMs) {
-			state.callbackError = -1;
-			break;
+	for (;;) {
+		SDL_LockMutex(state.mutex);
+		const bool complete = state.accessUnitDone && state.frameReady;
+		const int error = state.callbackError;
+		const bool accessUnitDone = state.accessUnitDone;
+		const bool frameReady = state.frameReady;
+		SDL_UnlockMutex(state.mutex);
+
+		if (error != 0) {
+			LogError("PS3 VDEC: decoder callback error on frame {} (error=0x{:08x}, au_done={}, frame_ready={})",
+			    state.frameIndex, static_cast<unsigned int>(error), accessUnitDone, frameReady);
+			return false;
 		}
-		if (SDL_CondWaitTimeout(state.condition, state.mutex, VdecTimeoutMs - elapsed) != 0) {
-			state.callbackError = -1;
-			break;
+		if (complete)
+			return true;
+		if (SDL_GetTicks() - start >= VdecTimeoutMs) {
+			LogError("PS3 VDEC: timed out waiting for frame {} callbacks (au_done={}, frame_ready={})",
+			    state.frameIndex, accessUnitDone, frameReady);
+			return false;
 		}
+		SDL_Delay(1);
 	}
-	const int error = state.callbackError;
-	SDL_UnlockMutex(state.mutex);
-	if (error != 0) {
-		LogError("PS3 VDEC: decoder callback wait failed (error=0x{:08x})", static_cast<unsigned int>(error));
-		return false;
-	}
-	return true;
 }
 
 } // namespace
