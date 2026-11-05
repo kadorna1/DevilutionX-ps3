@@ -71,12 +71,13 @@ echo "Verified clean raw SDL2 renderer and joystick source blobs"
 
 # Apply reviewed SDL2 backend changes from the exact, blob-verified upstream source.
 python3 "$ROOT/Packaging/ps3/patch_sdl2_psl1ght_renderer.py" "$SDL2_SOURCE/$SDL2_RENDERER"
-grep -Fq "gcmGetFlipStatus()" "$SDL2_SOURCE/$SDL2_RENDERER"
-grep -Fq "gcmResetFlipStatus()" "$SDL2_SOURCE/$SDL2_RENDERER"
+grep -Fq "gcmSetFlipHandler(PSL1GHT_FlipHandler)" "$SDL2_SOURCE/$SDL2_RENDERER"
+grep -Fq "gcmSetWaitFlip(data->context)" "$SDL2_SOURCE/$SDL2_RENDERER"
+grep -Fq "PSL1GHT_FB_COUNT 3" "$SDL2_SOURCE/$SDL2_RENDERER"
+grep -Fq "PSL1GHT_WaitForAllFlips(data)" "$SDL2_SOURCE/$SDL2_RENDERER"
 grep -Fq "rsxSetWriteBackendLabel(data->context, PSL1GHT_WAIT_IDLE_LABEL, value)" "$SDL2_SOURCE/$SDL2_RENDERER"
-grep -Fq "gcmGetControlRegister()" "$SDL2_SOURCE/$SDL2_RENDERER"
-if grep -Fq "gcmSetWaitFlip(" "$SDL2_SOURCE/$SDL2_RENDERER" || grep -Fq "gcmSetFlipHandler(" "$SDL2_SOURCE/$SDL2_RENDERER"; then
-  echo "error: obsolete RSX FIFO flip wait or callback remains in SDL2 renderer" >&2
+if grep -Fq "gcmGetFlipStatus()" "$SDL2_SOURCE/$SDL2_RENDERER" || grep -Fq "gcmResetFlipStatus()" "$SDL2_SOURCE/$SDL2_RENDERER"; then
+  echo "error: unreliable RSX flip-status polling remains in SDL2 renderer" >&2
   exit 1
 fi
 if grep -Fq "waitFlip()" "$SDL2_SOURCE/$SDL2_RENDERER"; then
@@ -122,7 +123,7 @@ test -s "$SDL2_ARCHIVE" || {
   echo "SDL2 source: $SDL2_REPO ($SDL2_BRANCH)"
   echo "SDL2 source commit: $(git -C "$SDL2_SOURCE" rev-parse HEAD)"
   echo "SDL2 renderer source blob: $actual_blob"
-  echo "Renderer patches: rsxkit-style PPE flip polling, RSX backend DMA fences, explicit unsupported paths, and RSX memory accounting"
+  echo "Renderer patches: hardware-tested callback-driven triple buffering, rsxkit RSX DMA fences, explicit unsupported paths, and RSX memory accounting"
   echo "PS3 joystick source blob: $actual_joystick_blob"
   echo "Controller patch: initialize pad state and center the four analog axes"
   echo "Controller mapping: DualShock 3 4-axis / 16-button ioPad layout"
