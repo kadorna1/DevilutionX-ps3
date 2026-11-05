@@ -75,9 +75,9 @@ static void waitFlip()
 } PSL1GHT_CopyData;
 
 /*
- * Label 68 is in the user-available GCM label range. This backend uses it
- * for a monotonically increasing RSX backend fence, so texture memory is
- * released only after all earlier RSX reads have completed.
+ * Label 255 is the user-available completion label used by rsxkit for
+ * rsxFinish-style synchronization. This backend uses it as a monotonic fence,
+ * so texture memory is released only after all earlier RSX reads have completed.
  */
 #define PSL1GHT_WAIT_IDLE_LABEL 255
 
