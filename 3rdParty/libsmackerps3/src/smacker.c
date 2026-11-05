@@ -196,8 +196,10 @@ static int smk_huff8_build(struct smk_huff8_t * const t, struct smk_bit_t * cons
 			fputs("libsmacker::smk_huff8_build() - ERROR: tree build failed\n", stderr);
 			return 0;
 		}
-	} else
+	} else {
 		t->tree[0] = 0;
+		t->size = 1;
+	}
 
 	/* huff trees end with an unset-bit */
 	if ((bit = smk_bs_read_1(bs)) < 0) {
@@ -223,7 +225,14 @@ static int smk_huff8_lookup(const struct smk_huff8_t * const t, struct smk_bit_t
 	assert(t);
 	assert(bs);
 
-	while (t->tree[index] & SMK_HUFF8_BRANCH) {
+	for (;;) {
+		if (index < 0 || (size_t)index >= t->size) {
+			fprintf(stderr, "libsmacker::smk_huff8_lookup() - ERROR: tree index %d exceeds size %lu\\n",
+			    index, (unsigned long)t->size);
+			return -1;
+		}
+		if (!(t->tree[index] & SMK_HUFF8_BRANCH))
+			break;
 		if ((bit = smk_bs_read_1(bs)) < 0) {
 			fputs("libsmacker::smk_huff8_lookup() - ERROR: get_bit returned -1\n", stderr);
 			return -1;
@@ -421,6 +430,7 @@ static int smk_huff16_build(struct smk_huff16_t * const t, struct smk_bit_t * co
 		}
 
 		t->tree[0] = 0;
+		t->size = 1;
 		//t->cache[0] = t->cache[1] = t->cache[2] = 0;
 	}
 
@@ -453,7 +463,14 @@ static int smk_huff16_lookup(struct smk_huff16_t * const t, struct smk_bit_t * c
 	assert(t);
 	assert(bs);
 
-	while (t->tree[index] & SMK_HUFF16_BRANCH) {
+	for (;;) {
+		if (index < 0 || (size_t)index >= t->size) {
+			fprintf(stderr, "libsmacker::smk_huff16_lookup() - ERROR: tree index %d exceeds size %lu\\n",
+			    index, (unsigned long)t->size);
+			return -1;
+		}
+		if (!(t->tree[index] & SMK_HUFF16_BRANCH))
+			break;
 		if ((bit = smk_bs_read_1(bs)) < 0) {
 			fputs("libsmacker::smk_huff16_lookup() - ERROR: get_bit returned -1\n", stderr);
 			return -1;
@@ -473,7 +490,12 @@ static int smk_huff16_lookup(struct smk_huff16_t * const t, struct smk_bit_t * c
 
 	if (value & SMK_HUFF16_CACHE) {
 		/* uses cached value instead of actual value */
-		value = t->cache[value & SMK_HUFF16_LEAF_MASK];
+		const unsigned int cacheIndex = value & SMK_HUFF16_LEAF_MASK;
+		if (cacheIndex >= 3) {
+			fprintf(stderr, "libsmacker::smk_huff16_lookup() - ERROR: invalid cache index %u\\n", cacheIndex);
+			return -1;
+		}
+		value = t->cache[cacheIndex];
 	}
 
 	if (t->cache[0] != value) {
@@ -1309,6 +1331,8 @@ static char smk_render_video(struct smk_video_t * s, unsigned char * p, unsigned
 	unsigned char s1, s2;
 	unsigned short temp;
 	unsigned long i, j, k, row, col, skip;
+	size_t decoded_blocks = 0;
+	size_t max_blocks;
 	/* used for video decoding */
 	struct smk_bit_t bs;
 	/* results from a tree lookup */
@@ -1331,6 +1355,11 @@ static char smk_render_video(struct smk_video_t * s, unsigned char * p, unsigned
 	/* null check */
 	assert(s);
 	assert(p);
+	if (s->w == 0 || s->h == 0 || (size_t)s->w > ((size_t)-1) / (size_t)s->h) {
+		fputs("libsmacker::smk_render_video() - ERROR: invalid video dimensions.\\n", stderr);
+		return -1;
+	}
+	max_blocks = (((size_t)s->w + 3U) / 4U) * (((size_t)s->h + 3U) / 4U);
 	row = 0;
 	col = 0;
 	/* Set up a bitstream for video unpacking */
@@ -1365,6 +1394,12 @@ static char smk_render_video(struct smk_video_t * s, unsigned char * p, unsigned
 		}
 
 		for (j = 0; (j < sizetable[blocklen]) && (row < s->h); j ++) {
+			if (++decoded_blocks > max_blocks) {
+				fprintf(stderr,
+				    "libsmacker::smk_render_video() - ERROR: frame block limit exceeded (%lu > %lu), row=%lu col=%lu\\n",
+				    (unsigned long)decoded_blocks, (unsigned long)max_blocks, row, col);
+				return -1;
+			}
 			skip = (row * s->w) + col;
 
 			switch (type) {

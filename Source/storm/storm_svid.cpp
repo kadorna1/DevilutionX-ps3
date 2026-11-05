@@ -327,35 +327,52 @@ bool SVidLoadNextFrame()
 {
 #ifdef __PS3__
 	const uint32_t traceIndex = SVidDebugContinueCount == 0 ? 0 : SVidDebugContinueCount - 1;
-	const bool traceDecode = traceIndex < 64 || traceIndex % 30 == 0;
 	const uint32_t currentFrame = SVidDecoderGetCurrentFrameNum();
-	if (traceDecode)
-		LogInfo("PS3 FMV TRACE: Smacker next-frame decode begin call={} current={}", traceIndex, currentFrame);
+	LogInfo("PS3 FMV ADVANCE: begin call={} current={} total={}",
+	    traceIndex, currentFrame, SVidDecoderGetNumFrames());
 #endif
 	if (SVidDecoderGetCurrentFrameNum() >= SVidDecoderGetNumFrames()) {
 		if (!SVidLoop) {
+#ifdef __PS3__
+			LogInfo("PS3 FMV ADVANCE: movie end call={}", traceIndex);
+#endif
 			return false;
 		}
-
+#ifdef __PS3__
+		LogInfo("PS3 FMV ADVANCE: rewind begin call={}", traceIndex);
+#endif
 		SVidDecoderRewind();
+#ifdef __PS3__
+		LogInfo("PS3 FMV ADVANCE: rewind complete call={}", traceIndex);
+#endif
 	}
 
 	SVidFrameEnd += SVidFrameLength;
+#ifdef __PS3__
+	LogInfo("PS3 FMV ADVANCE: decoder call begin call={} current={}",
+	    traceIndex, SVidDecoderGetCurrentFrameNum());
+#endif
 	const uint32_t decodedFrame = SVidDecoderGetNextFrame();
+#ifdef __PS3__
+	LogInfo("PS3 FMV ADVANCE: decoder call complete call={} result={} current={}",
+	    traceIndex,
+	    decodedFrame == std::numeric_limits<uint32_t>::max() ? -1 : static_cast<int>(decodedFrame),
+	    SVidDecoderGetCurrentFrameNum());
+#endif
 	if (decodedFrame == std::numeric_limits<uint32_t>::max()) {
+#ifdef __PS3__
 		LogError("PS3 FMV: decoder reported an error at frame index {}", traceIndex);
+#else
+		LogError("Smacker decoder reported an error while advancing to the next frame");
+#endif
 		return false;
 	}
 #ifdef __PS3__
-	if (traceDecode)
-		LogInfo("PS3 FMV TRACE: next-frame decode complete call={} current={}",
-		    traceIndex, SVidDecoderGetCurrentFrameNum());
+	LogInfo("PS3 FMV ADVANCE: frame copy begin call={} decoded={}", traceIndex, decodedFrame);
 #endif
 	SVidDecoderGetFrame(SVidFrameBuffer.get());
 #ifdef __PS3__
-	if (traceDecode)
-		LogInfo("PS3 FMV TRACE: Smacker_GetFrame copy complete call={} current={}",
-		    traceIndex, SVidDecoderGetCurrentFrameNum());
+	LogInfo("PS3 FMV ADVANCE: frame copy complete call={} decoded={}", traceIndex, decodedFrame);
 #endif
 
 	return true;
@@ -746,7 +763,8 @@ bool SVidPlayContinue()
 	const Uint32 continueStartTicks = SDL_GetTicks();
 	const uint32_t frameNumber = SVidDecoderGetCurrentFrameNum();
 	const uint32_t continueIndex = SVidDebugContinueCount++;
-	const bool traceFrame = continueIndex < 16 || continueIndex % 5 == 0;
+	// Keep detailed PS3 frame tracing enabled until the intro playback stall is isolated.
+	const bool traceFrame = true;
 	if (traceFrame)
 		LogInfo("PS3 FMV TRACE: continue begin index={} frame={}", continueIndex, frameNumber);
 	const uint64_t entryTime = GetTicksSmk();
@@ -804,7 +822,14 @@ bool SVidPlayContinue()
 	const Uint32 audioStartTicks = traceFrame ? SDL_GetTicks() : 0;
 #endif
 #ifndef NOSOUND
-	if (ShouldPushAudioData()) {
+#ifdef __PS3__
+	LogInfo("PS3 FMV TRACE: audio gate begin frame={}", frameNumber);
+#endif
+	const bool audioReady = ShouldPushAudioData();
+#ifdef __PS3__
+	LogInfo("PS3 FMV TRACE: audio gate complete frame={} ready={}", frameNumber, audioReady);
+#endif
+	if (audioReady) {
 		std::int16_t *buf = SVidAudioBuffer.get();
 #ifdef __PS3__
 		if (traceFrame)

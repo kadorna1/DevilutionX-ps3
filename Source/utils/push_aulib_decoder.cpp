@@ -1,6 +1,7 @@
 #include "push_aulib_decoder.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cstdint>
 #include <cstring>
 #include <limits>
@@ -11,6 +12,7 @@
 #include <aulib.h>
 
 #include "appfat.h"
+#include "utils/log.hpp"
 
 namespace devilution {
 
@@ -69,6 +71,13 @@ bool PushAulibDecoder::seekToTime([[maybe_unused]] std::chrono::microseconds pos
 int PushAulibDecoder::doDecoding(float buf[], int len, bool &callAgain)
 {
 	callAgain = false;
+#ifdef __PS3__
+	static std::atomic<uint32_t> callbackCount { 0 };
+	const uint32_t callbackId = ++callbackCount;
+	const bool traceCallback = callbackId <= 32 || callbackId % 128 == 0;
+	if (traceCallback)
+		LogInfo("PS3 FMV AUDIO CALLBACK: begin id={} requested_floats={}", callbackId, len);
+#endif
 
 	constexpr auto WriteFloats = [](PushAulibDecoder::AudioQueueItem &item, float *out, unsigned count) {
 		std::visit([&](const auto &samples) { ToFloats(&samples[item.pos], out, count); }, item.data);
@@ -76,7 +85,15 @@ int PushAulibDecoder::doDecoding(float buf[], int len, bool &callAgain)
 
 	unsigned remaining = len;
 	{
+#ifdef __PS3__
+		if (traceCallback)
+			LogInfo("PS3 FMV AUDIO CALLBACK: queue lock begin id={}", callbackId);
+#endif
 		const auto lock = std::lock_guard(queue_mutex_);
+#ifdef __PS3__
+		if (traceCallback)
+			LogInfo("PS3 FMV AUDIO CALLBACK: queue lock acquired id={} queued_samples={}", callbackId, queued_samples_);
+#endif
 		AudioQueueItem *item;
 		while ((item = Next()) != nullptr) {
 			if (remaining <= item->len) {
@@ -86,6 +103,10 @@ int PushAulibDecoder::doDecoding(float buf[], int len, bool &callAgain)
 				queued_samples_ -= remaining;
 				if (item->len == 0)
 					queue_.pop();
+#ifdef __PS3__
+				if (traceCallback)
+					LogInfo("PS3 FMV AUDIO CALLBACK: complete id={} remaining_queue={}", callbackId, queued_samples_);
+#endif
 				return len;
 			}
 
@@ -97,6 +118,11 @@ int PushAulibDecoder::doDecoding(float buf[], int len, bool &callAgain)
 		}
 	}
 	std::memset(buf, 0, remaining * sizeof(buf[0]));
+#ifdef __PS3__
+	if (traceCallback)
+		LogInfo("PS3 FMV AUDIO CALLBACK: complete id={} silent_floats={} remaining_queue={}",
+		    callbackId, remaining, queued_samples_);
+#endif
 	return len;
 }
 
