@@ -432,6 +432,7 @@ PSL1GHT_RenderPresent(SDL_Renderer * renderer)
      * gcmSetWaitFlip -> gcmSetFlip -> rsxFlushBuffer.
      * The callback retires each queued buffer; no status polling is used.
      */
+    PSL1GHT_ReserveRSXWords(data->context, 32);
     gcmSetWaitFlip(data->context);
 
     const s32 flipResult = gcmSetFlip(data->context, data->current_screen);
