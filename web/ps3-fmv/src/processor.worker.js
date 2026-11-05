@@ -126,10 +126,9 @@ async function ensureFfmpeg() {
   ffmpegReady = true;
   log("FFmpeg core ready: Smacker video/audio decoders and libx264 encoder verified.");
 }
-async function convertMovie(archive, member, index, total) {
+async function convertMovie(member, smk, index, total) {
   currentMovie = member;
   status(`Extracting ${member}`, 8 + index / total * 78, "Reading original movie bytes from the local MPQ.");
-  const smk = archive.readFile(member);
   if (!(smk instanceof Uint8Array) || smk.length === 0) throw new Error(`Empty or unreadable MPQ member: ${member}`);
   const input = `/work/in-${index}.smk`;
   const video = `/work/out-${index}.h264`;
@@ -177,36 +176,60 @@ async function convertMovie(archive, member, index, total) {
 }
 async function processArchives(files) {
   if (!files.length) throw new Error("Select at least one MPQ archive.");
-  const candidates = new Map();
+  await ensureFfmpeg();
+  const creator = new Creator({ sectorSize: 65536, listfile: true });
+  const seen = new Set();
+  let converted = 0;
+  let movieIndex = 0;
+
+  // Inspect each archive independently. A Hellfire MPQ selected before DIABDAT
+  // must not claim the base game's known intro paths if those files are absent.
   for (const file of files) {
     if (!file.size) throw new Error(`${file.name} is empty.`);
     if (file.size > 1024 * 1024 * 1024) throw new Error(`${file.name} exceeds the 1 GiB browser safety limit.`);
     status(`Opening ${file.name}`, 5, "Opening the selected archive directly from the local file picker.");
-    const archive = Archive.open(new Uint8Array(await file.arrayBuffer()));
-    const movies = findMovies(archive);
-    log(`${file.name}: ${movies.length} candidate Smacker path(s).`);
-    for (const member of movies) if (!candidates.has(member.toLowerCase())) candidates.set(member.toLowerCase(), { member, archiveName: file.name, archive });
-  }
-  const movies = [...candidates.values()];
-  if (!movies.length) throw new Error("No Smacker movies were found.");
-  await ensureFfmpeg();
-  const creator = new Creator({ sectorSize: 65536, listfile: true });
-  let converted = 0;
-  for (let i = 0; i < movies.length; i++) {
-    const { member, archiveName, archive } = movies[i];
+    let archive;
     try {
-      log(`Processing ${member} from ${archiveName}.`);
-      const { info, videoBytes, audioBytes } = await convertMovie(archive, member, i, movies.length);
-      creator.addFile(info.videoPath, videoBytes, { compress: false });
-      if (audioBytes) creator.addFile(info.audioPath, audioBytes, { compress: true });
-      creator.addFile(info.metaPath, encoder.encode(metadataFor(info)), { compress: true });
-      converted++;
+      archive = Archive.open(new Uint8Array(await file.arrayBuffer()));
     } catch (error) {
-      log(`Skipped ${member}: ${error.message}`);
-      if (member.toLowerCase() === "gendata\\diablo1.smk") throw error;
+      throw new Error(`Cannot open ${file.name}: ${error.message}`);
+    }
+
+    const members = findMovies(archive);
+    log(`${file.name}: ${members.length} candidate Smacker path(s).`);
+    for (const member of members) {
+      const key = member.toLowerCase();
+      if (seen.has(key)) continue;
+
+      let smk;
+      try {
+        smk = archive.readFile(member);
+      } catch (error) {
+        log(`Not present/readable in ${file.name}: ${member} (${error.message})`);
+        continue;
+      }
+      if (!(smk instanceof Uint8Array) || smk.length === 0) {
+        log(`Skipping empty movie member: ${member} in ${file.name}`);
+        continue;
+      }
+
+      seen.add(key);
+      try {
+        log(`Processing ${member} from ${file.name}.`);
+        const { info, videoBytes, audioBytes } = await convertMovie(member, smk, movieIndex++, MAX_MOVIES);
+        creator.addFile(info.videoPath, videoBytes, { compress: false });
+        if (audioBytes) creator.addFile(info.audioPath, audioBytes, { compress: true });
+        creator.addFile(info.metaPath, encoder.encode(metadataFor(info)), { compress: true });
+        converted++;
+      } catch (error) {
+        log(`Skipped ${member}: ${error.message}`);
+        if (key === "gendata\\\\diablo1.smk") throw error;
+      }
+      if (converted > MAX_MOVIES) throw new Error(`More than ${MAX_MOVIES} movies were found; split the archives into smaller batches.`);
     }
   }
-  if (!converted) throw new Error("No Smacker movies could be converted.");
+
+  if (!converted) throw new Error("No Smacker movies could be converted. Make sure DIABDAT.MPQ is selected.");
   status("Writing the VDEC sidecar MPQ", 96, "Creating a separate MPQ in browser memory.");
   const output = creator.write();
   const validation = Archive.open(output);
@@ -220,6 +243,7 @@ async function processArchives(files) {
   const transferable = output.buffer.slice(output.byteOffset, output.byteOffset + output.byteLength);
   send("complete", { filename: "devilutionx-vdec.mpq", movieCount: converted, buffer: transferable }, [transferable]);
 }
+
 self.addEventListener("message", async (event) => {
   const message = event.data ?? {};
   if (message.type === "clear") {
