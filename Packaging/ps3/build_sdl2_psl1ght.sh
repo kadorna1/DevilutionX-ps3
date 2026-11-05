@@ -76,6 +76,7 @@ grep -Fq "gcmSetWaitFlip(data->context)" "$SDL2_SOURCE/$SDL2_RENDERER"
 grep -Fq "PSL1GHT_FB_COUNT 3" "$SDL2_SOURCE/$SDL2_RENDERER"
 grep -Fq "PSL1GHT_WaitForAllFlips(data)" "$SDL2_SOURCE/$SDL2_RENDERER"
 grep -Fq "PSL1GHT_ReserveRSXWords(data->context, 16)" "$SDL2_SOURCE/$SDL2_RENDERER"
+grep -Fq "PSL1GHT_ReserveRSXWords(data->context, 32)" "$SDL2_SOURCE/$SDL2_RENDERER"
 grep -Fq "rsxSetWriteBackendLabel(data->context, PSL1GHT_WAIT_IDLE_LABEL, value)" "$SDL2_SOURCE/$SDL2_RENDERER"
 if grep -Fq "gcmGetFlipStatus()" "$SDL2_SOURCE/$SDL2_RENDERER" || grep -Fq "gcmResetFlipStatus()" "$SDL2_SOURCE/$SDL2_RENDERER"; then
   echo "error: unreliable RSX flip-status polling remains in SDL2 renderer" >&2
