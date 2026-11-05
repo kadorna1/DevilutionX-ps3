@@ -1,5 +1,6 @@
 const PREFIX = "devilutionx-ps3-fmv-";
-const CACHE = PREFIX + "v1";
+// Bump this whenever a published runtime asset changes, especially FFmpeg core.
+const CACHE = PREFIX + "v2";
 self.addEventListener("install", (event) => event.waitUntil((async () => {
   const cache = await caches.open(CACHE);
   await cache.add(self.registration.scope);
