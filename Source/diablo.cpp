@@ -142,8 +142,10 @@ namespace devilution {
 
 #ifdef __PS3__
 #define PS3_BOOT_LOG(message) LogInfo("PS3 boot: {}", message)
+#define PS3_LEVEL_LOAD_LOG(message) LogInfo("PS3 level load: {}", message)
 #else
 #define PS3_BOOT_LOG(message) ((void)0)
+#define PS3_LEVEL_LOAD_LOG(message) ((void)0)
 #endif
 
 Point MousePosition;
@@ -1511,7 +1513,10 @@ std::expected<void, std::string> LoadAllGFX()
  */
 void CreateLevel(lvl_entry entry)
 {
+	PS3_LEVEL_LOAD_LOG("CreateLevel: begin");
+	PS3_LEVEL_LOAD_LOG("CreateLevel: dungeon generation begin");
 	CreateDungeon(DungeonSeeds[currlevel], entry);
+	PS3_LEVEL_LOAD_LOG("CreateLevel: dungeon generation complete");
 
 	switch (leveltype) {
 	case DTYPE_TOWN:
@@ -1538,11 +1543,14 @@ void CreateLevel(lvl_entry entry)
 	default:
 		app_fatal("CreateLevel");
 	}
+	PS3_LEVEL_LOAD_LOG("CreateLevel: triggers complete");
 
 	if (leveltype != DTYPE_TOWN) {
 		Freeupstairs();
 	}
+	PS3_LEVEL_LOAD_LOG("CreateLevel: palette initialization begin");
 	LoadRndLvlPal(leveltype);
+	PS3_LEVEL_LOAD_LOG("CreateLevel: complete");
 }
 
 void UnstuckChargers()
@@ -3333,13 +3341,20 @@ void LoadGameLevelReturn()
 
 void LoadGameLevelInitPlayers(bool firstflag, lvl_entry lvldir)
 {
+	PS3_LEVEL_LOAD_LOG("player initialization: begin");
 	for (Player &player : Players) {
 		if (player.plractive && player.isOnActiveLevel()) {
+			PS3_LEVEL_LOAD_LOG("player graphics: begin");
 			InitPlayerGFX(player);
-			if (lvldir != ENTRY_LOAD)
+			PS3_LEVEL_LOAD_LOG("player graphics: complete");
+			if (lvldir != ENTRY_LOAD) {
+				PS3_LEVEL_LOAD_LOG("player state initialization: begin");
 				InitPlayer(player, firstflag);
+				PS3_LEVEL_LOAD_LOG("player state initialization: complete");
+			}
 		}
 	}
+	PS3_LEVEL_LOAD_LOG("player initialization: complete");
 }
 
 void LoadGameLevelSetVisited()
@@ -3353,30 +3368,59 @@ void LoadGameLevelSetVisited()
 
 std::expected<void, std::string> LoadGameLevelTown(bool firstflag, lvl_entry lvldir, const Player &myPlayer)
 {
+	PS3_LEVEL_LOAD_LOG("town initialization: begin");
+	PS3_LEVEL_LOAD_LOG("town flags: begin");
 	for (int i = 0; i < MAXDUNX; i++) { // NOLINT(modernize-loop-convert)
 		for (int j = 0; j < MAXDUNY; j++) {
 			dFlags[i][j] |= DungeonFlag::Lit;
 		}
 	}
+	PS3_LEVEL_LOAD_LOG("town flags: complete");
 
+	PS3_LEVEL_LOAD_LOG("InitTowners: begin");
 	InitTowners();
+	PS3_LEVEL_LOAD_LOG("InitTowners: complete");
+
+	PS3_LEVEL_LOAD_LOG("InitStash: begin");
 	InitStash();
+	PS3_LEVEL_LOAD_LOG("InitStash: complete");
+
+	PS3_LEVEL_LOAD_LOG("InitVisualStore: begin");
 	InitVisualStore();
+	PS3_LEVEL_LOAD_LOG("InitVisualStore: complete");
+
+	PS3_LEVEL_LOAD_LOG("town InitItems: begin");
 	InitItems();
+	PS3_LEVEL_LOAD_LOG("town InitItems: complete");
+
+	PS3_LEVEL_LOAD_LOG("town InitMissiles: begin");
 	InitMissiles();
+	PS3_LEVEL_LOAD_LOG("town InitMissiles: complete");
 
 	IncProgress();
 
-	if (!firstflag && lvldir != ENTRY_LOAD && myPlayer._pLvlVisited[currlevel] && !gbIsMultiplayer)
+	if (!firstflag && lvldir != ENTRY_LOAD && myPlayer._pLvlVisited[currlevel] && !gbIsMultiplayer) {
+		PS3_LEVEL_LOAD_LOG("town LoadLevel: begin");
 		RETURN_IF_ERROR(LoadLevel());
-	if (gbIsMultiplayer)
+		PS3_LEVEL_LOAD_LOG("town LoadLevel: complete");
+	}
+	if (gbIsMultiplayer) {
+		PS3_LEVEL_LOAD_LOG("town DeltaLoadLevel: begin");
 		DeltaLoadLevel();
+		PS3_LEVEL_LOAD_LOG("town DeltaLoadLevel: complete");
+	}
 
 	IncProgress();
 
-	for (int x = 0; x < DMAXX; x++)
+	PS3_LEVEL_LOAD_LOG("town automap exploration: begin");
+	for (int x = 0; x < DMAXX; x++) {
+		if (x % 8 == 0)
+			PS3_LEVEL_LOAD_LOG("town automap exploration: row batch");
 		for (int y = 0; y < DMAXY; y++)
 			UpdateAutomapExplorer({ x, y }, MAP_EXP_SELF);
+	}
+	PS3_LEVEL_LOAD_LOG("town automap exploration: complete");
+	PS3_LEVEL_LOAD_LOG("town initialization: complete");
 	return {};
 }
 
@@ -3434,11 +3478,14 @@ std::expected<void, std::string> LoadGameLevelSetLevel(bool firstflag, lvl_entry
 
 std::expected<void, std::string> LoadGameLevelStandardLevel(bool firstflag, lvl_entry lvldir, const Player &myPlayer)
 {
+	PS3_LEVEL_LOAD_LOG("standard level setup: begin");
 	CreateLevel(lvldir);
+	PS3_LEVEL_LOAD_LOG("standard level setup: CreateLevel complete");
 
 	IncProgress();
 
 	SetRndSeedForDungeonLevel();
+	PS3_LEVEL_LOAD_LOG("standard level setup: initial seed complete");
 
 	if (leveltype != DTYPE_TOWN) {
 		RETURN_IF_ERROR(GetLevelMTypes());
@@ -3449,16 +3496,21 @@ std::expected<void, std::string> LoadGameLevelStandardLevel(bool firstflag, lvl_
 		IncProgress();
 
 #if !defined(USE_SDL1) && !defined(__vita__)
+		PS3_LEVEL_LOAD_LOG("town virtual gamepad graphics: begin");
 		InitVirtualGamepadGFX();
+		PS3_LEVEL_LOAD_LOG("town virtual gamepad graphics: complete");
 #endif
 
 		IncProgress();
 
+		PS3_LEVEL_LOAD_LOG("town missile graphics: begin");
 		RETURN_IF_ERROR(InitMissileGFX());
+		PS3_LEVEL_LOAD_LOG("town missile graphics: complete");
 
 		IncProgress();
 		IncProgress();
 	}
+	PS3_LEVEL_LOAD_LOG("standard level setup: graphics stage complete");
 
 	IncProgress();
 
@@ -3472,26 +3524,42 @@ std::expected<void, std::string> LoadGameLevelStandardLevel(bool firstflag, lvl_
 	IncProgress();
 
 	LoadGameLevelInitPlayers(firstflag, lvldir);
+	PS3_LEVEL_LOAD_LOG("standard level setup: player graphics/state complete");
+	PS3_LEVEL_LOAD_LOG("standard level setup: InitMultiView begin");
 	InitMultiView();
+	PS3_LEVEL_LOAD_LOG("standard level setup: InitMultiView complete");
 
 	IncProgress();
 
 	LoadGameLevelSetVisited();
+	PS3_LEVEL_LOAD_LOG("standard level setup: visited-state check complete");
 
 	SetRndSeedForDungeonLevel();
+	PS3_LEVEL_LOAD_LOG("standard level setup: final seed complete");
 
 	if (leveltype == DTYPE_TOWN) {
+		PS3_LEVEL_LOAD_LOG("standard level setup: town init begin");
 		RETURN_IF_ERROR(LoadGameLevelTown(firstflag, lvldir, myPlayer));
+		PS3_LEVEL_LOAD_LOG("standard level setup: town init complete");
 	} else {
 		RETURN_IF_ERROR(LoadGameLevelDungeon(firstflag, lvldir, myPlayer));
 	}
 
+	PS3_LEVEL_LOAD_LOG("standard level setup: dungeon/town setup complete");
+	PS3_LEVEL_LOAD_LOG("standard level setup: PlayDungMsgs begin");
 	PlayDungMsgs();
+	PS3_LEVEL_LOAD_LOG("standard level setup: PlayDungMsgs complete");
 
-	if (UseMultiplayerQuests())
+	if (UseMultiplayerQuests()) {
+		PS3_LEVEL_LOAD_LOG("standard level setup: ResyncMPQuests begin");
 		ResyncMPQuests();
-	else
+		PS3_LEVEL_LOAD_LOG("standard level setup: ResyncMPQuests complete");
+	} else {
+		PS3_LEVEL_LOAD_LOG("standard level setup: ResyncQuests begin");
 		ResyncQuests();
+		PS3_LEVEL_LOAD_LOG("standard level setup: ResyncQuests complete");
+	}
+	PS3_LEVEL_LOAD_LOG("standard level setup: complete");
 	return {};
 }
 
@@ -3566,24 +3634,36 @@ std::expected<void, std::string> LoadGameLevel(bool firstflag, lvl_entry lvldir)
 	const Player &myPlayer = *MyPlayer;
 
 	if (setlevel) {
+		PS3_LEVEL_LOAD_LOG("LoadGameLevel: set-level setup begin");
 		RETURN_IF_ERROR(LoadGameLevelSetLevel(firstflag, lvldir, myPlayer));
+		PS3_LEVEL_LOAD_LOG("LoadGameLevel: set-level setup complete");
 	} else {
+		PS3_LEVEL_LOAD_LOG("LoadGameLevel: standard-level setup begin");
 		RETURN_IF_ERROR(LoadGameLevelStandardLevel(firstflag, lvldir, myPlayer));
+		PS3_LEVEL_LOAD_LOG("LoadGameLevel: standard-level setup complete");
 	}
 
+	PS3_LEVEL_LOAD_LOG("LoadGameLevel: SyncPortals begin");
 	SyncPortals();
+	PS3_LEVEL_LOAD_LOG("LoadGameLevel: SyncPortals complete");
+	PS3_LEVEL_LOAD_LOG("LoadGameLevel: player entry sync begin");
 	LoadGameLevelSyncPlayerEntry(lvldir);
+	PS3_LEVEL_LOAD_LOG("LoadGameLevel: player entry sync complete");
 
 	IncProgress();
 	IncProgress();
 
 	if (firstflag) {
+		PS3_LEVEL_LOAD_LOG("LoadGameLevel: InitMainPanel begin");
 		RETURN_IF_ERROR(InitMainPanel());
+		PS3_LEVEL_LOAD_LOG("LoadGameLevel: InitMainPanel complete");
 	}
 
 	IncProgress();
 
+	PS3_LEVEL_LOAD_LOG("LoadGameLevel: monster lights begin");
 	UpdateMonsterLights();
+	PS3_LEVEL_LOAD_LOG("LoadGameLevel: monster lights complete");
 	UnstuckChargers();
 
 	LoadGameLevelLightVision();
@@ -3593,9 +3673,13 @@ std::expected<void, std::string> LoadGameLevel(bool firstflag, lvl_entry lvldir)
 	}
 
 #ifndef USE_SDL1
+	PS3_LEVEL_LOAD_LOG("LoadGameLevel: ActivateVirtualGamepad begin");
 	ActivateVirtualGamepad();
+	PS3_LEVEL_LOAD_LOG("LoadGameLevel: ActivateVirtualGamepad complete");
 #endif
+	PS3_LEVEL_LOAD_LOG("LoadGameLevel: music start begin");
 	LoadGameLevelStartMusic(neededTrack);
+	PS3_LEVEL_LOAD_LOG("LoadGameLevel: music start complete");
 
 	CompleteProgress();
 
