@@ -1497,7 +1497,7 @@ std::expected<void, std::string> LoadLvlGFX()
 std::expected<void, std::string> LoadAllGFX()
 {
 	IncProgress();
-#if !defined(USE_SDL1) && !defined(__vita__)
+#if !defined(USE_SDL1) && !defined(__vita__) && !defined(__PS3__)
 	InitVirtualGamepadGFX();
 #endif
 	IncProgress();
@@ -3434,7 +3434,7 @@ std::expected<void, std::string> LoadGameLevelSetLevel(bool firstflag, lvl_entry
 	RETURN_IF_ERROR(InitMonsters());
 	IncProgress();
 	if (!HeadlessMode) {
-#if !defined(USE_SDL1) && !defined(__vita__)
+#if !defined(USE_SDL1) && !defined(__vita__) && !defined(__PS3__)
 		InitVirtualGamepadGFX();
 #endif
 		RETURN_IF_ERROR(InitMissileGFX());
@@ -3495,10 +3495,10 @@ std::expected<void, std::string> LoadGameLevelStandardLevel(bool firstflag, lvl_
 	} else if (!HeadlessMode) {
 		IncProgress();
 
-#if !defined(USE_SDL1) && !defined(__vita__)
-		PS3_LEVEL_LOAD_LOG("town virtual gamepad graphics: begin");
+#if !defined(USE_SDL1) && !defined(__vita__) && !defined(__PS3__)
 		InitVirtualGamepadGFX();
-		PS3_LEVEL_LOAD_LOG("town virtual gamepad graphics: complete");
+#elif defined(__PS3__)
+		PS3_LEVEL_LOAD_LOG("town virtual gamepad graphics: skipped (physical controller)");
 #endif
 
 		IncProgress();
