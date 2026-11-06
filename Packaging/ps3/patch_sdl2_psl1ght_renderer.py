@@ -470,6 +470,43 @@ replace_once(
 )
 
 replace_once(
+    """    scale.inX = srcrect->x;
+    scale.inY = srcrect->y;
+    scale.inW = srcrect->w;
+    scale.inH = srcrect->h;""",
+    """    scale.inX = srcrect->x;
+    scale.inY = srcrect->y;
+    /*
+     * The NV3089 scaled-image engine is only reliable with an even input
+     * width. Mesa's nouveau driver (nv30_transfer.c, NV03_SIFM SIZE) rounds
+     * both input dimensions up to a multiple of two, and on real PS3
+     * hardware an odd-width copy is the last command the RSX command
+     * processor executes before it stops advancing. The 853-pixel logical
+     * texture is the first odd-width copy of the session; the 320-pixel
+     * movie texture is even and presents normally.
+     *
+     * Read one spare texel rather than resample: the ratio and clip still
+     * describe srcrect->w pixels, so the visible output does not change.
+     * The 128-byte-aligned pitch always has room for it because a row of an
+     * odd-width image is never a multiple of 128 bytes.
+     */
+    scale.inW = srcrect->w;
+    if ((scale.inW & 1) != 0) {
+        const int bytesPerPixel = src->format->BytesPerPixel;
+        if ((srcrect->x + srcrect->w + 1) * bytesPerPixel > src->pitch) {
+            SDL_Log("PSL1GHT refusing odd-width transfer without source pitch slack: src=%dx%d pitch=%d rect=%d,%d %dx%d",
+                src->w, src->h, src->pitch,
+                srcrect->x, srcrect->y, srcrect->w, srcrect->h);
+            SDL_SetError("PSL1GHT transfer needs one spare source texel for even input width");
+            return -1;
+        }
+        ++scale.inW;
+    }
+    scale.inH = srcrect->h;""",
+    "even-width RSX scaled-image input",
+)
+
+replace_once(
     """    // Hardware accelerated blit with scaling
     rsxSetTransferScaleMode(data->context, GCM_TRANSFER_LOCAL_TO_LOCAL, GCM_TRANSFER_SURFACE);
     rsxSetTransferScaleSurface(data->context, &scale, &surface);""",
@@ -494,8 +531,9 @@ replace_once(
     if (data->transfer_log_count < 8
         || src->w != data->last_transfer_src_w
         || src->h != data->last_transfer_src_h) {
-        SDL_Log("PSL1GHT transfer: src=%dx%d pitch=%d offset=%u -> dst=%dx%d pitch=%d offset=%u rect=%d,%d %dx%d ratio=%d,%d",
+        SDL_Log("PSL1GHT transfer: src=%dx%d pitch=%d offset=%u in=%dx%d -> dst=%dx%d pitch=%d offset=%u rect=%d,%d %dx%d ratio=%d,%d",
             src->w, src->h, src->pitch, (unsigned int)src_offset,
+            (int)scale.inW, (int)scale.inH,
             dst->w, dst->h, dst->pitch, (unsigned int)dst_offset,
             final_rect.x, final_rect.y, final_rect.w, final_rect.h,
             (int)scale.ratioX, (int)scale.ratioY);
@@ -855,8 +893,11 @@ for required in (
     "#define PSL1GHT_PITCH_ALIGN 128",
     "src_offset & (PSL1GHT_PITCH_ALIGN - 1)",
     "dst_offset & (PSL1GHT_PITCH_ALIGN - 1)",
-    "PSL1GHT transfer: src=%dx%d pitch=%d offset=%u",
+    "PSL1GHT transfer: src=%dx%d pitch=%d offset=%u in=%dx%d",
     "PSL1GHT transfer surfaces require 128-byte-aligned pitches and offsets",
+    "if ((scale.inW & 1) != 0)",
+    "++scale.inW;",
+    "PSL1GHT transfer needs one spare source texel for even input width",
     "flip_wait_failed",
     "PSL1GHT_ReserveRSXWords(data->context, 16)",
     "PSL1GHT_ReserveRSXWords(data->context, 32)",
@@ -888,4 +929,4 @@ if "static void waitFlip()" in source:
     raise SystemExit("error: obsolete SDL2 waitFlip helper remains in the patched renderer")
 
 path.write_text(source, encoding="utf-8")
-print("Applied callback-driven triple-buffer synchronization, 128-byte-aligned RSX surface pitches and offsets, pre-reserved RSX transfer/flip/DMA packets, asynchronous SetFlip -> Flush presentation, checked FIFO rollover, latched flip-fence failures, RSX DMA fences, renderer capability fixes, and RSX memory accounting")
+print("Applied callback-driven triple-buffer synchronization, 128-byte-aligned RSX surface pitches and offsets, even-width RSX scaled-image inputs, pre-reserved RSX transfer/flip/DMA packets, asynchronous SetFlip -> Flush presentation, checked FIFO rollover, latched flip-fence failures, RSX DMA fences, renderer capability fixes, and RSX memory accounting")
