@@ -178,9 +178,16 @@ void LoadPalette(const char *path)
 	assert(path != nullptr);
 	if (HeadlessMode) return;
 
+	#ifdef __PS3__
+	LogInfo("PS3 palette: asset read begin: {}", path);
+#else
 	LogVerbose("Loading palette from {}", path);
+#endif
 	std::array<Color, 256> palData;
 	LoadFileInMem(path, palData);
+#ifdef __PS3__
+	LogInfo("PS3 palette: asset read complete: {}", path);
+#endif
 	for (unsigned i = 0; i < palData.size(); i++) {
 		logical_palette[i] = palData[i].toSDL();
 	}
@@ -191,6 +198,9 @@ void LoadPaletteAndInitBlending(const char *path)
 	assert(path != nullptr);
 	if (HeadlessMode) return;
 	LoadPalette(path);
+#ifdef __PS3__
+	LogInfo("PS3 palette: blend lookup begin level={}", static_cast<int>(leveltype));
+#endif
 	if (leveltype == DTYPE_CAVES || leveltype == DTYPE_CRYPT) {
 		GenerateBlendedLookupTable(logical_palette.data(), /*skipFrom=*/1, /*skipTo=*/31);
 	} else if (leveltype == DTYPE_NEST) {
@@ -198,6 +208,9 @@ void LoadPaletteAndInitBlending(const char *path)
 	} else {
 		GenerateBlendedLookupTable(logical_palette.data());
 	}
+#ifdef __PS3__
+	LogInfo("PS3 palette: blend lookup complete");
+#endif
 }
 
 void LoadRndLvlPal(dungeon_type l)
