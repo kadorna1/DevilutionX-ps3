@@ -823,6 +823,27 @@ void ReinitializeRenderer()
 		if (SDL_RenderSetLogicalSize(renderer, gnScreenWidth, gnScreenHeight) <= -1) {
 			ErrSdl();
 		}
+#ifdef __PS3__
+		// SDL2 normally letterboxes a 4:3 logical canvas inside the 16:9
+		// fullscreen output. The PS3 port intentionally stretches the complete
+		// Diablo canvas to the physical display instead.
+		int outputWidth = 0;
+		int outputHeight = 0;
+		if (SDL_GetRendererOutputSize(renderer, &outputWidth, &outputHeight) < 0) {
+			ErrSdl();
+		}
+		if (outputWidth <= 0 || outputHeight <= 0
+		    || SDL_RenderSetViewport(renderer, nullptr) < 0
+		    || SDL_RenderSetScale(renderer,
+		           static_cast<float>(outputWidth) / gnScreenWidth,
+		           static_cast<float>(outputHeight) / gnScreenHeight) < 0) {
+			ErrSdl();
+		}
+		LogInfo("PS3 display scaling: logical {}x{} -> output {}x{} scale=({:.3f},{:.3f})",
+		    gnScreenWidth, gnScreenHeight, outputWidth, outputHeight,
+		    static_cast<float>(outputWidth) / gnScreenWidth,
+		    static_cast<float>(outputHeight) / gnScreenHeight);
+#endif
 #endif
 
 		ReinitializeTexture();
