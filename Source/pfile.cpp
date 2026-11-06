@@ -181,8 +181,13 @@ void EncodeHero(SaveWriter &saveWriter, const PlayerPack *pack)
 SaveWriter GetSaveWriter(uint32_t saveNum, [[maybe_unused]] bool carryForward = true)
 {
 #if defined(UNPACKED_SAVES)
-	// Unpacked saves are ordinary directories; there is no MPQ archive to carry forward.
-	return SaveWriter(GetSavePath(saveNum));
+	// Unpacked saves are ordinary directories; create the character's save folder before
+	// writing the hero file so it can be reopened immediately from the character list.
+	std::string savePath = GetSavePath(saveNum);
+	RecursivelyCreateDir(savePath.c_str());
+	if (!DirectoryExists(savePath.c_str()))
+		DirErrorDlg(savePath);
+	return SaveWriter(std::move(savePath));
 #else
 	return SaveWriter(GetSavePath(saveNum), carryForward);
 #endif
@@ -191,7 +196,11 @@ SaveWriter GetSaveWriter(uint32_t saveNum, [[maybe_unused]] bool carryForward = 
 SaveWriter GetStashWriter()
 {
 #if defined(UNPACKED_SAVES)
-	return SaveWriter(GetStashSavePath());
+	std::string savePath = GetStashSavePath();
+	RecursivelyCreateDir(savePath.c_str());
+	if (!DirectoryExists(savePath.c_str()))
+		DirErrorDlg(savePath);
+	return SaveWriter(std::move(savePath));
 #else
 	return SaveWriter(GetStashSavePath(), /*carryForward=*/true);
 #endif

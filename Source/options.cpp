@@ -583,6 +583,11 @@ OptionEntryResolution::OptionEntryResolution()
 void OptionEntryResolution::LoadFromIni(std::string_view category)
 {
 	size_ = { ini->getInt(category, "Width", DEFAULT_WIDTH), ini->getInt(category, "Height", DEFAULT_HEIGHT) };
+#ifdef __PS3__
+	// Use a native 1080p logical canvas on PS3 instead of inheriting the old 640x480 ini value.
+	// The RSX output is already fullscreen 1920x1080; matching the canvas avoids an 853x480 render.
+	size_ = { 1920, 1080 };
+#endif
 }
 void OptionEntryResolution::SaveToIni(std::string_view category) const
 {
