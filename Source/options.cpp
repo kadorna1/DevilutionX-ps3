@@ -323,8 +323,13 @@ void OptionEntryBoolean::LoadFromIni(std::string_view category)
 	// logical view to the display aspect, upscale it, and disable integer
 	// scaling so the image covers the complete 16:9 output.
 	if (category == "Graphics") {
-		if (key == "Fullscreen" || key == "Fit to Screen" || key == "Upscale") {
+		if (key == "Fullscreen" || key == "Upscale") {
 			value = true;
+			return;
+		}
+		if (key == "Fit to Screen") {
+			// Stretch the native 640x480 canvas non-uniformly to the 16:9 scanout.
+			value = false;
 			return;
 		}
 		if (key == "Integer Scaling") {
