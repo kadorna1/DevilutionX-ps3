@@ -19,7 +19,10 @@ Uint32 PreviousMouseTick;
 float MouseRemainderX;
 float MouseRemainderY;
 
-constexpr float MouseSpeedPixelsPerSecond = 600.0F;
+// Independent calibration: horizontal cursor travel is reduced while
+// vertical travel is increased to compensate for the observed PS3 pad feel.
+constexpr float MouseSpeedXPixelsPerSecond = 420.0F;
+constexpr float MouseSpeedYPixelsPerSecond = 780.0F;
 constexpr float MouseStickDeadzone = 0.04F;
 
 bool IsRightStickAxis(Uint8 axis)
@@ -79,8 +82,10 @@ bool PS3CreateMouseMotionEvent(SDL_Event *event)
 		return false;
 
 	const float timeScale = static_cast<float>(elapsed) / 1000.0F;
-	const float pendingX = rightStickX * MouseSpeedPixelsPerSecond * timeScale + MouseRemainderX;
-	const float pendingY = rightStickY * MouseSpeedPixelsPerSecond * timeScale + MouseRemainderY;
+	const float pendingX = rightStickX * MouseSpeedXPixelsPerSecond * timeScale + MouseRemainderX;
+	// Controller motion stores positive rightStickY for an upward stick push,
+	// while SDL mouse coordinates increase downwards.
+	const float pendingY = -rightStickY * MouseSpeedYPixelsPerSecond * timeScale + MouseRemainderY;
 	const int deltaX = static_cast<int>(pendingX);
 	const int deltaY = static_cast<int>(pendingY);
 	MouseRemainderX = pendingX - static_cast<float>(deltaX);

@@ -5,7 +5,7 @@
 #include <cstdint>
 #include <string>
 
-#include <SDL.h>
+#include "engine/dx.h"
 #include <sys/memory.h>
 #include <sysutil/osk.h>
 #include <sysutil/sysutil.h>
@@ -72,14 +72,20 @@ void RequestOskUnload()
 void OskSystemCallback(u64 status, u64 /*param*/, void * /*userData*/)
 {
 	switch (status) {
+	case SYSUTIL_OSK_LOADED:
+		LogInfo("PS3 OSK: system keyboard loaded");
+		break;
 	case SYSUTIL_OSK_DONE:
+		LogInfo("PS3 OSK: input completed");
 		RequestOskUnload();
 		break;
 	case SYSUTIL_OSK_INPUT_CANCELED:
+		LogInfo("PS3 OSK: input canceled");
 		(void)oskAbort();
 		RequestOskUnload();
 		break;
 	case SYSUTIL_OSK_UNLOADED:
+		LogInfo("PS3 OSK: system keyboard unloaded");
 		OskUnloaded = true;
 		break;
 	default:
@@ -118,7 +124,7 @@ std::optional<std::string> PS3GetTextInput(
 		parameters.prohibitFlags |= OSK_PROHIBIT_SPACE;
 
 	OskOutput = {};
-	OskOutput.res = OSK_CANCELED;
+	OskOutput.res = OSK_OK;
 	OskOutput.len = static_cast<s32>(OskBufferCapacity - 1);
 	OskOutput.str = OskOutputText.data();
 	OskUnloaded = false;
@@ -154,8 +160,10 @@ std::optional<std::string> PS3GetTextInput(
 
 	LogInfo("PS3 OSK: waiting for system keyboard");
 	while (!OskUnloaded) {
+		// PSL1GHT's OSK is composited by the system utility layer during a
+		// framebuffer flip. Servicing callbacks alone does not make it visible.
 		(void)sysUtilCheckCallback();
-		SDL_Delay(16);
+		RenderPresent();
 	}
 	(void)sysUtilUnregisterCallback(SYSUTIL_EVENT_SLOT0);
 	(void)sysMemContainerDestroy(container);
