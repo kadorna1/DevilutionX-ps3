@@ -53,6 +53,9 @@ replace_once(
     unsigned int texture_peak_count;
     bool flip_handler_registered;
     bool draw_buffer_acquired;
+    unsigned int transfer_log_count;
+    int last_transfer_src_w;
+    int last_transfer_src_h;
 } PSL1GHT_RenderData;""",
     "renderer state structure",
 )
@@ -89,13 +92,15 @@ static void waitFlip()
 #define PSL1GHT_FLIP_WAIT_MAX_POLLS 20000
 
 /*
- * The RSX scaled-image (transfer) engine requires every surface pitch to be
- * a multiple of 64 bytes. A 32-bit texture whose width is not a multiple of
- * 16 (for example the 853-pixel logical view) otherwise faults the RSX
- * command processor on its first full-screen RenderCopy. That stops flip
- * callbacks and freezes the display while the game keeps running.
+ * The RSX scaled-image (transfer) engine reads source rows in 128-byte
+ * sectors, so both the pitch and the base offset of every surface must be
+ * 128-byte aligned. The 853-pixel logical view produces a 3412-byte row that
+ * has to be padded to 3456 bytes, and its allocation must not land on a
+ * 64-byte-but-not-128 boundary. Either violation faults the RSX command
+ * processor on the first full-screen RenderCopy: flip callbacks stop while
+ * the game itself keeps running.
  */
-#define PSL1GHT_PITCH_ALIGN 64
+#define PSL1GHT_PITCH_ALIGN 128
 #define PSL1GHT_ALIGN_PITCH(pitch) (((pitch) + PSL1GHT_PITCH_ALIGN - 1) & ~(PSL1GHT_PITCH_ALIGN - 1))
 
 /*
@@ -469,17 +474,34 @@ replace_once(
     rsxSetTransferScaleMode(data->context, GCM_TRANSFER_LOCAL_TO_LOCAL, GCM_TRANSFER_SURFACE);
     rsxSetTransferScaleSurface(data->context, &scale, &surface);""",
     """    /*
-     * The RSX scaled-image unit requires 64-byte-aligned pitches. Every
-     * texture and scanout buffer is allocated through the aligned paths;
-     * fail closed here instead of emitting a packet that can fault the RSX
-     * command processor and freeze the display.
+     * The RSX scaled-image unit reads source rows in 128-byte sectors. Both
+     * the pitch and the surface base offset must be 128-byte aligned. A
+     * 64-byte-aligned-but-not-128 source offset (the 853-pixel logical
+     * texture is one) faults the RSX command processor on the first
+     * full-screen RenderCopy and freezes the display.
      */
     if ((src->pitch & (PSL1GHT_PITCH_ALIGN - 1)) != 0
-        || (dst->pitch & (PSL1GHT_PITCH_ALIGN - 1)) != 0) {
-        SDL_Log("PSL1GHT refusing unaligned transfer: src_pitch=%d dst_pitch=%d",
-            src->pitch, dst->pitch);
-        SDL_SetError("PSL1GHT transfer surfaces require 64-byte-aligned pitches");
+        || (dst->pitch & (PSL1GHT_PITCH_ALIGN - 1)) != 0
+        || (src_offset & (PSL1GHT_PITCH_ALIGN - 1)) != 0
+        || (dst_offset & (PSL1GHT_PITCH_ALIGN - 1)) != 0) {
+        SDL_Log("PSL1GHT refusing unaligned transfer: src_ptr=%p src_offset=%u src_pitch=%d dst_ptr=%p dst_offset=%u dst_pitch=%d",
+            src->pixels, (unsigned int)src_offset, src->pitch,
+            dst->pixels, (unsigned int)dst_offset, dst->pitch);
+        SDL_SetError("PSL1GHT transfer surfaces require 128-byte-aligned pitches and offsets");
         return -1;
+    }
+
+    if (data->transfer_log_count < 8
+        || src->w != data->last_transfer_src_w
+        || src->h != data->last_transfer_src_h) {
+        SDL_Log("PSL1GHT transfer: src=%dx%d pitch=%d offset=%u -> dst=%dx%d pitch=%d offset=%u rect=%d,%d %dx%d ratio=%d,%d",
+            src->w, src->h, src->pitch, (unsigned int)src_offset,
+            dst->w, dst->h, dst->pitch, (unsigned int)dst_offset,
+            final_rect.x, final_rect.y, final_rect.w, final_rect.h,
+            (int)scale.ratioX, (int)scale.ratioY);
+        data->last_transfer_src_w = src->w;
+        data->last_transfer_src_h = src->h;
+        ++data->transfer_log_count;
     }
 
     /*
@@ -699,8 +721,8 @@ PSL1GHT_DestroyRenderer(SDL_Renderer * renderer)
 
 # The transfer engine also reads the destination surface pitch and offset, so
 # align the scanout pitch and make every display-buffer offset 128-byte
-# aligned (the scaled-image unit requires 64-byte pitches and 128-byte
-# destination offsets).
+# aligned (the scaled-image unit reads both source and destination in 128-byte
+# sectors).
 replace_once(
     "    pitch = displayMode->w * SDL_BYTESPERPIXEL(displayMode->format);",
     "    pitch = PSL1GHT_ALIGN_PITCH(displayMode->w * SDL_BYTESPERPIXEL(displayMode->format));",
@@ -770,7 +792,7 @@ PSL1GHT_CreateTexture(SDL_Renderer * renderer, SDL_Texture * texture)
     allocationSize = (size_t)texture->h * (size_t)pitch;
     SDL_Log("PSL1GHT texture allocation begin bytes=%u pitch=%d",
         (unsigned int)allocationSize, pitch);
-    pixels = rsxMemalign(64, allocationSize);
+    pixels = rsxMemalign(128, allocationSize);
     if (!pixels) {
         SDL_Log("PSL1GHT texture allocation failed: rsxMemalign returned NULL");
         SDL_OutOfMemory();
@@ -829,7 +851,12 @@ for required in (
     "pitch = PSL1GHT_ALIGN_PITCH(texture->w * SDL_BYTESPERPIXEL(texture->format));",
     "pitch = PSL1GHT_ALIGN_PITCH(displayMode->w * SDL_BYTESPERPIXEL(displayMode->format));",
     "rsxMemalign(128, displayMode->h * pitch)",
-    "PSL1GHT transfer surfaces require 64-byte-aligned pitches",
+    "rsxMemalign(128, allocationSize)",
+    "#define PSL1GHT_PITCH_ALIGN 128",
+    "src_offset & (PSL1GHT_PITCH_ALIGN - 1)",
+    "dst_offset & (PSL1GHT_PITCH_ALIGN - 1)",
+    "PSL1GHT transfer: src=%dx%d pitch=%d offset=%u",
+    "PSL1GHT transfer surfaces require 128-byte-aligned pitches and offsets",
     "flip_wait_failed",
     "PSL1GHT_ReserveRSXWords(data->context, 16)",
     "PSL1GHT_ReserveRSXWords(data->context, 32)",
@@ -861,4 +888,4 @@ if "static void waitFlip()" in source:
     raise SystemExit("error: obsolete SDL2 waitFlip helper remains in the patched renderer")
 
 path.write_text(source, encoding="utf-8")
-print("Applied callback-driven triple-buffer synchronization, 64-byte-aligned RSX surface pitches, pre-reserved RSX transfer/flip/DMA packets, asynchronous SetFlip -> Flush presentation, checked FIFO rollover, latched flip-fence failures, RSX DMA fences, renderer capability fixes, and RSX memory accounting")
+print("Applied callback-driven triple-buffer synchronization, 128-byte-aligned RSX surface pitches and offsets, pre-reserved RSX transfer/flip/DMA packets, asynchronous SetFlip -> Flush presentation, checked FIFO rollover, latched flip-fence failures, RSX DMA fences, renderer capability fixes, and RSX memory accounting")

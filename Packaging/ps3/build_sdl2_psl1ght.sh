@@ -96,7 +96,15 @@ grep -Fq "PSL1GHT_FB_COUNT 3" "$SDL2_SOURCE/$SDL2_RENDERER"
 grep -Fq "PSL1GHT_ALIGN_PITCH(texture->w * SDL_BYTESPERPIXEL(texture->format))" "$SDL2_SOURCE/$SDL2_RENDERER"
 grep -Fq "PSL1GHT_ALIGN_PITCH(displayMode->w * SDL_BYTESPERPIXEL(displayMode->format))" "$SDL2_SOURCE/$SDL2_RENDERER"
 grep -Fq "rsxMemalign(128, displayMode->h * pitch)" "$SDL2_SOURCE/$SDL2_RENDERER"
-grep -Fq "PSL1GHT transfer surfaces require 64-byte-aligned pitches" "$SDL2_SOURCE/$SDL2_RENDERER"
+grep -Fq "rsxMemalign(128, allocationSize)" "$SDL2_SOURCE/$SDL2_RENDERER"
+grep -Fq "#define PSL1GHT_PITCH_ALIGN 128" "$SDL2_SOURCE/$SDL2_RENDERER"
+grep -Fq "src_offset & (PSL1GHT_PITCH_ALIGN - 1)" "$SDL2_SOURCE/$SDL2_RENDERER"
+grep -Fq "dst_offset & (PSL1GHT_PITCH_ALIGN - 1)" "$SDL2_SOURCE/$SDL2_RENDERER"
+grep -Fq "PSL1GHT transfer surfaces require 128-byte-aligned pitches and offsets" "$SDL2_SOURCE/$SDL2_RENDERER"
+if grep -Fq "rsxMemalign(64, allocationSize)" "$SDL2_SOURCE/$SDL2_RENDERER"; then
+  echo "error: RSX textures may not be allocated with only 64-byte alignment" >&2
+  exit 1
+fi
 if grep -Fq "pitch = texture->w * SDL_BYTESPERPIXEL(texture->format);" "$SDL2_SOURCE/$SDL2_RENDERER"; then
   echo "error: unaligned RSX texture pitch remains in SDL2 renderer" >&2
   exit 1
@@ -183,7 +191,7 @@ test -s "$SDL2_ARCHIVE" || {
   echo "SDL2 renderer source blob: $actual_blob"
   echo "SDL2 video source blob: $video_worktree_blob"
   echo "RSX initialization: 1 MiB command buffer + 8 MiB shared I/O allocation"
-  echo "Renderer patches: callback-authoritative triple-buffer PPU fence, pre-reserved RSX transfer/flip/DMA packets, asynchronous SetFlip -> Flush presentation, checked FIFO rollover, latched flip-wait failures, rsxkit FIFO callback bridge and RSX DMA fences, PPC scanout barrier, explicit unsupported paths, and RSX memory accounting"
+  echo "Renderer patches: callback-authoritative triple-buffer PPU fence, 128-byte-aligned RSX pitches and surface offsets, pre-reserved RSX transfer/flip/DMA packets, asynchronous SetFlip -> Flush presentation, checked FIFO rollover, latched flip-wait failures, rsxkit FIFO callback bridge and RSX DMA fences, PPC scanout barrier, explicit unsupported paths, and RSX memory accounting"
   echo "PS3 joystick source blob: $actual_joystick_blob"
   echo "Controller patch: initialize pad state and center the four analog axes"
   echo "Controller mapping: DualShock 3 4-axis / 16-button ioPad layout"

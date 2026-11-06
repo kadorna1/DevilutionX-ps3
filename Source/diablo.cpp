@@ -21,6 +21,10 @@
 
 #include <config.h>
 
+#ifdef __PS3__
+#include <sys/process.h>
+#endif
+
 #include "DiabloUI/selstart.h"
 #include "appfat.h"
 #include "automap.h"
@@ -2811,7 +2815,17 @@ void diablo_quit(int exitStatus)
 	if (SdlLogFile != nullptr) std::fclose(SdlLogFile);
 #endif
 
+#ifdef __PS3__
+	/*
+	 * Return to the XMB with the LV2 process-exit syscall instead of letting
+	 * libc run its exit handlers. All SDL/RSX resources have been released by
+	 * DiabloDeinit() at this point, and a hung RSX teardown must not keep the
+	 * console from completing the process exit.
+	 */
+	sysProcessExit(exitStatus);
+#else
 	exit(exitStatus);
+#endif
 }
 
 #ifdef __UWP__
