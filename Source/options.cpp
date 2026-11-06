@@ -318,10 +318,9 @@ void OptionEntryBase::NotifyValueChanged()
 void OptionEntryBoolean::LoadFromIni(std::string_view category)
 {
 #ifdef __PS3__
-	// The PS3 port always presents through the RSX renderer. Ignore stale
-	// desktop settings saved by earlier builds: start fullscreen, fit the
-	// logical view to the display aspect, upscale it, and disable integer
-	// scaling so the image covers the complete 16:9 output.
+	// Ignore stale desktop settings saved by earlier builds: force fullscreen
+	// RSX upscaling, stretch the 640x480 logical canvas to 1920x1080, and
+	// disable integer scaling so the image covers the complete 16:9 output.
 	if (category == "Graphics") {
 		if (key == "Fullscreen" || key == "Upscale") {
 			value = true;
@@ -589,10 +588,9 @@ void OptionEntryResolution::LoadFromIni(std::string_view category)
 {
 	size_ = { ini->getInt(category, "Width", DEFAULT_WIDTH), ini->getInt(category, "Height", DEFAULT_HEIGHT) };
 #ifdef __PS3__
-	// Keep the original 640x480 game canvas. Fit to Screen expands it to the
-	// display's 16:9 aspect (about 853x480) while the RSX scans out at 1920x1080.
-	// Treating 1920x1080 as the logical canvas leaves legacy Diablo UI art at
-	// its unscaled 640x480 size in the center of the display.
+	// Keep the original 640x480 game canvas. The PS3 renderer scales it
+	// independently in each axis to the 1920x1080 RSX output. Treating 1080p
+	// as the logical canvas leaves legacy Diablo UI art at 640x480 in the center.
 	size_ = { 640, 480 };
 #endif
 }
