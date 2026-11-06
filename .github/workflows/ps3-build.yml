@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build-ps3:
@@ -192,6 +192,70 @@ jobs:
             build-ps3/lua-ldo-compile-command.txt
             build-ps3/lua-lstate-compile-command.txt
           if-no-files-found: error
+
+      - name: Publish PS3-only release from ps3-port
+        if: github.event_name == 'push' && github.ref == 'refs/heads/ps3-port' && contains(github.event.head_commit.message, '[publish-ps3-release-2026-11-06]')
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const crypto = require('crypto');
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const pkgPath = 'build-ps3/devilutionx-ps3-gnpdrm.pkg';
+            const pkgName = 'devilutionx-ps3-gnpdrm.pkg';
+            const pkg = fs.readFileSync(pkgPath);
+            const checksum = crypto.createHash('sha256').update(pkg).digest('hex');
+            const notes = [
+              'PS3-only DevilutionX port release built from the ps3-port branch.',
+              '',
+              '### Included',
+              '- Installable PS3 GNPDRM package containing the ported engine and redistributable built-in assets.',
+              '- GitHub-generated source archives for the exact tagged branch commit.',
+              '- SHA-256 checksum for the PKG.',
+              '',
+              '### Game data',
+              'No Diablo or Hellfire MPQ archives are included in this release, source tree, or package. Supply your own legally obtained DIABDAT.MPQ (and Hellfire MPQs when using that expansion) under /dev_hdd0/game/DEVILUT00/USRDIR/.',
+              '',
+              '### Build verification',
+              'The PS3 CI build verifies the PPU ELF, PS3 process metadata, finalized SELF/PKG structure, and GNPDRM package header. Hardware testing is separate from CI verification.'
+            ].join('\\n');
+            const release = await github.rest.repos.createRelease({
+              owner,
+              repo,
+              tag_name: 'ps3-port-2026.11.06',
+              target_commitish: 'ps3-port',
+              name: 'DevilutionX PS3 Port - 2026-11-06',
+              body: notes,
+              draft: false,
+              prerelease: false,
+              generate_release_notes: false
+            });
+            await github.rest.repos.uploadReleaseAsset({
+              owner,
+              repo,
+              release_id: release.data.id,
+              name: pkgName,
+              data: pkg,
+              headers: {
+                'content-type': 'application/octet-stream',
+                'content-length': pkg.length
+              }
+            });
+            const checksumFile = Buffer.from(checksum + '  ' + pkgName + '\\n');
+            await github.rest.repos.uploadReleaseAsset({
+              owner,
+              repo,
+              release_id: release.data.id,
+              name: pkgName + '.sha256',
+              data: checksumFile,
+              headers: {
+                'content-type': 'text/plain',
+                'content-length': checksumFile.length
+              }
+            });
+            core.info('Published ' + release.data.html_url);
       
       - name: Create PS3 SELF and PKG
         run: |
