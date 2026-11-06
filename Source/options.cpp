@@ -584,9 +584,11 @@ void OptionEntryResolution::LoadFromIni(std::string_view category)
 {
 	size_ = { ini->getInt(category, "Width", DEFAULT_WIDTH), ini->getInt(category, "Height", DEFAULT_HEIGHT) };
 #ifdef __PS3__
-	// Use a native 1080p logical canvas on PS3 instead of inheriting the old 640x480 ini value.
-	// The RSX output is already fullscreen 1920x1080; matching the canvas avoids an 853x480 render.
-	size_ = { 1920, 1080 };
+	// Keep the original 640x480 game canvas. Fit to Screen expands it to the
+	// display's 16:9 aspect (about 853x480) while the RSX scans out at 1920x1080.
+	// Treating 1920x1080 as the logical canvas leaves legacy Diablo UI art at
+	// its unscaled 640x480 size in the center of the display.
+	size_ = { 640, 480 };
 #endif
 }
 void OptionEntryResolution::SaveToIni(std::string_view category) const
