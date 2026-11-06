@@ -178,7 +178,7 @@ void LoadPalette(const char *path)
 	assert(path != nullptr);
 	if (HeadlessMode) return;
 
-	#ifdef __PS3__
+#ifdef __PS3__
 	LogInfo("PS3 palette: asset read begin: {}", path);
 #else
 	LogVerbose("Loading palette from {}", path);
