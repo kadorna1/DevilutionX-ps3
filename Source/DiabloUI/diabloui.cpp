@@ -76,6 +76,10 @@
 // for virtual keyboard on 3DS
 #include "platform/ctr/keyboard.h"
 #endif
+#ifdef __PS3__
+#include "platform/ps3/input.h"
+#include "platform/ps3/keyboard.h"
+#endif
 
 namespace devilution {
 
@@ -263,7 +267,7 @@ void UiInitList(void (*fnFocus)(size_t value), void (*fnSelect)(size_t value), v
 			vita_start_text_input(pItemUIEdit->m_hint, pItemUIEdit->m_value, pItemUIEdit->m_max_length);
 #elif defined(__3DS__)
 			ctr_vkbdInput(pItemUIEdit->m_hint, pItemUIEdit->m_value, &HandleCtrTextInput);
-#else
+#elif !defined(__PS3__)
 			SDLC_StartTextInput(ghMainWnd);
 #endif
 			UiTextInputState.emplace(TextInputState::Options {
@@ -271,6 +275,11 @@ void UiInitList(void (*fnFocus)(size_t value), void (*fnSelect)(size_t value), v
 			    .cursor = &pItemUIEdit->m_cursor,
 			    .maxLength = pItemUIEdit->m_max_length,
 			});
+#ifdef __PS3__
+			// The OSK edits the same bounded UTF-8 state used by SDL text events.
+			if (const auto text = PS3GetTextInput(pItemUIEdit->m_hint, pItemUIEdit->m_value, pItemUIEdit->m_max_length))
+				UiTextInputState->assign(*text);
+#endif
 		} else if (item->IsType(UiType::List)) {
 			auto *uiList = static_cast<UiList *>(item.get());
 			SelectedItemMax = std::max(uiList->m_vecItems.size() - 1, static_cast<size_t>(0));
@@ -1283,6 +1292,14 @@ bool UiItemMouseEvents(SDL_Event *event, const std::vector<std::unique_ptr<UiIte
 
 void DrawMouse()
 {
+#ifdef __PS3__
+	// Force a visible software pointer while the right stick is in mouse mode.
+	if (PS3IsMouseControlEnabled()) {
+		if (ArtCursor)
+			RenderClxSprite(Surface(DiabloUiSurface()), (*ArtCursor)[0], MousePosition);
+		return;
+	}
+#endif
 	if (ControlDevice != ControlTypes::KeyboardAndMouse || IsHardwareCursor() || !ArtCursor)
 		return;
 	RenderClxSprite(Surface(DiabloUiSurface()), (*ArtCursor)[0], MousePosition);

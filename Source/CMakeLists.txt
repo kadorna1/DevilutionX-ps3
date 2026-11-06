@@ -163,6 +163,12 @@ set(libdevilutionx_SRCS
   utils/surface_to_clx.cpp
   utils/timer.cpp)
 
+if(PS3)
+  list(APPEND libdevilutionx_SRCS
+    platform/ps3/input.cpp
+    platform/ps3/keyboard.cpp)
+endif()
+
 # These files are responsible for most of the runtime in Debug mode.
 # Apply some optimizations to them even in Debug mode to get reasonable performance.
 #

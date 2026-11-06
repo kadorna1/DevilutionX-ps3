@@ -120,6 +120,14 @@ existing Smacker decoder. The VDEC path is newly integrated and still requires
 real-console playback validation; a successful CI build does not prove that
 the PS3 firmware decoder accepts every stream or that frame timing is perfect.
 
+## Controller pointer and system text entry
+
+- The right stick moves a software mouse pointer on PS3. Press **R3** to toggle right-stick mouse mode on or off; when disabled, the right stick returns to normal controller/gameplay handling.
+- The pointer mode works in menus and gameplay and uses the game's logical screen coordinates.
+- The native PS3 system on-screen keyboard opens only while a text-entry state is active: character-name editing, multiplayer chat, carried-gold splitting, and stash-gold withdrawal.
+- Numeric amount fields request the numeric OSK panel. Text fields use the console's configured keyboard language.
+- OSK text is converted from PS3 UTF-16 to the engine's UTF-8 text state and truncated on UTF-8 character boundaries to the field's existing byte limit. Canceling the OSK leaves the field's previous value unchanged.
+
 ## XMB media assets
 
 The repository keeps PS3 XMB media in assets/xmb/. The generated package places

@@ -10,6 +10,10 @@
 #include "utils/log.hpp"
 #include "utils/sdl_compat.h"
 
+#ifdef __PS3__
+#include "platform/ps3/keyboard.h"
+#endif
+
 namespace devilution {
 
 bool DropGoldFlag;
@@ -121,7 +125,12 @@ void OpenGoldDrop(int8_t invIndex, int max)
 	    .min = 0,
 	    .max = max,
 	});
+#ifdef __PS3__
+	if (const auto text = PS3GetTextInput(_("Gold amount"), GoldDropText, sizeof(GoldDropText) - 1, /*numericOnly=*/true))
+		GoldDropInputState->assign(*text);
+#else
 	SDLC_StartTextInput(ghMainWnd);
+#endif
 }
 
 void CloseGoldDrop()

@@ -32,6 +32,10 @@
 #include "utils/str_cat.hpp"
 #include "utils/utf8.hpp"
 
+#ifdef __PS3__
+#include "platform/ps3/keyboard.h"
+#endif
+
 namespace devilution {
 
 bool IsStashOpen;
@@ -609,7 +613,12 @@ void StartGoldWithdraw()
 	    .min = 0,
 	    .max = std::min(RoomForGold(), Stash.gold),
 	});
+#ifdef __PS3__
+	if (const auto text = PS3GetTextInput(_("Gold amount"), GoldWithdrawText, sizeof(GoldWithdrawText) - 1, /*numericOnly=*/true))
+		GoldWithdrawInputState->assign(*text);
+#else
 	SDLC_StartTextInput(ghMainWnd);
+#endif
 }
 
 void WithdrawGoldKeyPress(SDL_Keycode vkey)
