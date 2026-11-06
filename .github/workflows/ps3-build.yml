@@ -225,6 +225,7 @@ jobs:
           path: build-ps3/devilutionx-ps3-gnpdrm.pkg
           if-no-files-found: error
 
+
       - name: Publish PS3-only release from ps3-port
         if: github.event_name == 'push' && github.ref == 'refs/heads/ps3-port' && contains(github.event.head_commit.message, '[publish-ps3-release-2026-11-06]')
         uses: actions/github-script@v7
@@ -235,6 +236,7 @@ jobs:
             const crypto = require('crypto');
             const owner = context.repo.owner;
             const repo = context.repo.repo;
+            const tagName = 'ps3-port-2026.11.06';
             const pkgPath = 'build-ps3/devilutionx-ps3-gnpdrm.pkg';
             const pkgName = 'devilutionx-ps3-gnpdrm.pkg';
             const pkg = fs.readFileSync(pkgPath);
@@ -253,21 +255,65 @@ jobs:
               '### Build verification',
               'The PS3 CI build verifies the PPU ELF, PS3 process metadata, finalized SELF/PKG structure, and GNPDRM package header. Hardware testing is separate from CI verification.'
             ].join('\n');
-            const release = await github.rest.repos.createRelease({
+
+            let release;
+            try {
+              const existing = await github.rest.repos.getReleaseByTag({ owner, repo, tag: tagName });
+              release = existing.data;
+              await github.rest.git.updateRef({
+                owner,
+                repo,
+                ref: 'tags/' + tagName,
+                sha: context.sha,
+                force: true
+              });
+              await github.rest.repos.updateRelease({
+                owner,
+                repo,
+                release_id: release.id,
+                tag_name: tagName,
+                target_commitish: 'ps3-port',
+                name: 'DevilutionX PS3 Port - 2026-11-06',
+                body: notes,
+                draft: false,
+                prerelease: false
+              });
+            } catch (error) {
+              if (error.status !== 404) throw error;
+              const created = await github.rest.repos.createRelease({
+                owner,
+                repo,
+                tag_name: tagName,
+                target_commitish: 'ps3-port',
+                name: 'DevilutionX PS3 Port - 2026-11-06',
+                body: notes,
+                draft: false,
+                prerelease: false,
+                generate_release_notes: false
+              });
+              release = created.data;
+            }
+
+            const oldAssets = await github.rest.repos.listReleaseAssets({
               owner,
               repo,
-              tag_name: 'ps3-port-2026.11.06',
-              target_commitish: 'ps3-port',
-              name: 'DevilutionX PS3 Port - 2026-11-06',
-              body: notes,
-              draft: false,
-              prerelease: false,
-              generate_release_notes: false
+              release_id: release.id,
+              per_page: 100
             });
+            for (const asset of oldAssets.data) {
+              if (asset.name === pkgName || asset.name === pkgName + '.sha256') {
+                await github.rest.repos.deleteReleaseAsset({
+                  owner,
+                  repo,
+                  asset_id: asset.id
+                });
+              }
+            }
+
             await github.rest.repos.uploadReleaseAsset({
               owner,
               repo,
-              release_id: release.data.id,
+              release_id: release.id,
               name: pkgName,
               data: pkg,
               headers: {
@@ -279,7 +325,7 @@ jobs:
             await github.rest.repos.uploadReleaseAsset({
               owner,
               repo,
-              release_id: release.data.id,
+              release_id: release.id,
               name: pkgName + '.sha256',
               data: checksumFile,
               headers: {
@@ -287,4 +333,4 @@ jobs:
                 'content-length': checksumFile.length
               }
             });
-            core.info('Published ' + release.data.html_url);
+            core.info('Published ' + release.html_url + ' from ' + context.sha);
