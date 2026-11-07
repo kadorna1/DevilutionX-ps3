@@ -792,11 +792,21 @@ bool pfile_ui_save_create(_uiheroinfo *heroinfo)
 
 bool pfile_delete_save(_uiheroinfo *heroInfo)
 {
+	if (heroInfo == nullptr || heroInfo->saveNumber >= MAX_CHARACTERS)
+		return false;
+
 	const uint32_t saveNum = heroInfo->saveNumber;
-	if (saveNum < MAX_CHARACTERS) {
-		hero_names[saveNum][0] = '\0';
-		RemoveFile(GetSavePath(saveNum).c_str());
-	}
+#ifdef UNPACKED_SAVES
+	// With UNPACKED_SAVES, each character is stored in a directory rather
+	// than a single archive file. RemoveFile() cannot remove a non-empty
+	// directory, so remove the entire save tree before releasing its slot.
+	const std::string savePath = GetSavePath(saveNum);
+	if (!RemoveDirectoryRecursively(savePath.c_str()))
+		return false;
+#else
+	RemoveFile(GetSavePath(saveNum).c_str());
+#endif
+	hero_names[saveNum][0] = '\0';
 	return true;
 }
 

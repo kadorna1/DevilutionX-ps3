@@ -45,6 +45,10 @@
 #ifndef DVL_HAS_FILESYSTEM
 #include <dirent.h>
 #endif
+#elif defined(__PS3__)
+#include <dirent.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #endif
 
 #if defined(__APPLE__) && DARWIN_MAJOR_VERSION >= 9
@@ -487,6 +491,109 @@ void RemoveFile(const char *path)
 	} else {
 		LogVerbose("Failed to remove file: {}", name);
 	}
+#endif
+}
+
+#if defined(__PS3__) || (defined(DVL_HAS_POSIX_2001) && !defined(DVL_HAS_FILESYSTEM) && !defined(_WIN32))
+namespace {
+
+bool RemoveDirectoryRecursivelyPosix(const std::string &path)
+{
+	struct ::stat pathStat {};
+	if (::lstat(path.c_str(), &pathStat) != 0) {
+		if (errno == ENOENT)
+			return true;
+		LogError("lstat({}) failed: {}", path, std::strerror(errno));
+		return false;
+	}
+	if (!S_ISDIR(pathStat.st_mode)) {
+		if (::unlink(path.c_str()) == 0 || errno == ENOENT)
+			return true;
+		LogError("unlink({}) failed: {}", path, std::strerror(errno));
+		return false;
+	}
+
+	DIR *directory = ::opendir(path.c_str());
+	if (directory == nullptr) {
+		LogError("opendir({}) failed: {}", path, std::strerror(errno));
+		return false;
+	}
+
+	bool success = true;
+	for (;;) {
+		errno = 0;
+		dirent *entry = ::readdir(directory);
+		if (entry == nullptr) {
+			if (errno != 0) {
+				LogError("readdir({}) failed: {}", path, std::strerror(errno));
+				success = false;
+			}
+			break;
+		}
+		if (std::strcmp(entry->d_name, ".") == 0 || std::strcmp(entry->d_name, "..") == 0)
+			continue;
+
+		std::string childPath = path;
+		if (childPath.empty() || childPath.back() != DirectorySeparator)
+			childPath += DirectorySeparator;
+		childPath += entry->d_name;
+
+		struct ::stat childStat {};
+		if (::lstat(childPath.c_str(), &childStat) != 0) {
+			if (errno != ENOENT) {
+				LogError("lstat({}) failed: {}", childPath, std::strerror(errno));
+				success = false;
+			}
+			continue;
+		}
+
+		if (S_ISDIR(childStat.st_mode)) {
+			if (!RemoveDirectoryRecursivelyPosix(childPath))
+				success = false;
+		} else if (::unlink(childPath.c_str()) != 0 && errno != ENOENT) {
+			LogError("unlink({}) failed: {}", childPath, std::strerror(errno));
+			success = false;
+		}
+	}
+
+	if (::closedir(directory) != 0) {
+		LogError("closedir({}) failed: {}", path, std::strerror(errno));
+		success = false;
+	}
+	if (!success)
+		return false;
+	if (::rmdir(path.c_str()) != 0 && errno != ENOENT) {
+		LogError("rmdir({}) failed: {}", path, std::strerror(errno));
+		return false;
+	}
+	return true;
+}
+
+} // namespace
+#endif
+
+bool RemoveDirectoryRecursively(const char *path)
+{
+	if (path == nullptr || path[0] == '\0')
+		return false;
+
+	std::string normalizedPath { path };
+	while (normalizedPath.size() > 1 && normalizedPath.back() == DirectorySeparator)
+		normalizedPath.pop_back();
+
+#ifdef DVL_HAS_FILESYSTEM
+	std::error_code error;
+	std::filesystem::remove_all(reinterpret_cast<const char8_t *>(normalizedPath.c_str()), error);
+	if (error) {
+		LogError("failed to recursively remove directory {}: {}", normalizedPath, error.message());
+		return false;
+	}
+	return true;
+#elif defined(__PS3__) || (defined(DVL_HAS_POSIX_2001) && !defined(_WIN32))
+	return RemoveDirectoryRecursivelyPosix(normalizedPath);
+#else
+	LogError("recursive directory removal is not supported for {}", normalizedPath);
+	return false;
 #endif
 }
 

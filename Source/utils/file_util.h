@@ -47,6 +47,8 @@ bool ResizeFile(const char *path, std::uintmax_t size);
 void RenameFile(const char *from, const char *to);
 void CopyFileOverwrite(const char *from, const char *to);
 void RemoveFile(const char *path);
+/** Recursively removes a directory and its contents. A missing directory is treated as success. */
+bool RemoveDirectoryRecursively(const char *path);
 FILE *OpenFile(const char *path, const char *mode);
 
 #if defined(_WIN32) && !defined(DEVILUTIONX_WINDOWS_NO_WCHAR)
