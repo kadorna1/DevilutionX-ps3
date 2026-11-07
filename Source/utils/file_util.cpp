@@ -500,7 +500,7 @@ namespace {
 bool RemoveDirectoryRecursivelyPosix(const std::string &path)
 {
 	struct ::stat pathStat {};
-	if (::lstat(path.c_str(), &pathStat) != 0) {
+	if (::stat(path.c_str(), &pathStat) != 0) {
 		if (errno == ENOENT)
 			return true;
 		LogError("lstat({}) failed: {}", path, std::strerror(errno));
@@ -538,8 +538,18 @@ bool RemoveDirectoryRecursivelyPosix(const std::string &path)
 			childPath += DirectorySeparator;
 		childPath += entry->d_name;
 
+		// The PSL1GHT/Newlib stat headers do not expose lstat(). Avoid following
+		// entries the filesystem identifies as symlinks.
+		if (entry->d_type == DT_LNK) {
+			if (::unlink(childPath.c_str()) != 0 && errno != ENOENT) {
+				LogError("unlink({}) failed: {}", childPath, std::strerror(errno));
+				success = false;
+			}
+			continue;
+		}
+
 		struct ::stat childStat {};
-		if (::lstat(childPath.c_str(), &childStat) != 0) {
+		if (::stat(childPath.c_str(), &childStat) != 0) {
 			if (errno != ENOENT) {
 				LogError("lstat({}) failed: {}", childPath, std::strerror(errno));
 				success = false;
