@@ -114,6 +114,11 @@ UiList *gUiList = nullptr;
 bool UiItemsWraps;
 
 std::optional<TextInputState> UiTextInputState;
+#ifdef __PS3__
+std::string UiTextInputGuide;
+std::size_t UiTextInputMaxLength;
+bool UiOskButtonConsumed;
+#endif
 bool allowEmptyTextInput = false;
 
 constexpr Uint32 ListDoubleClickTimeMs = 500;
@@ -227,6 +232,17 @@ void HandleCtrTextInput(std::string_view textInput)
 }
 #endif
 
+#ifdef __PS3__
+bool PS3OpenUiTextInputKeyboard()
+{
+	if (!UiTextInputState.has_value())
+		return false;
+	if (const auto text = PS3GetTextInput(UiTextInputGuide, UiTextInputState->value(), UiTextInputMaxLength))
+		UiTextInputState->assign(*text);
+	return true;
+}
+#endif
+
 } // namespace
 
 bool IsTextInputActive()
@@ -259,8 +275,14 @@ void UiInitList(void (*fnFocus)(size_t value), void (*fnSelect)(size_t value), v
 	for (const auto &item : items) {
 		if (item->IsType(UiType::Edit)) {
 			auto *pItemUIEdit = static_cast<UiEdit *>(item.get());
+#ifndef __PS3__
 			SDL_SetTextInputArea(ghMainWnd, &item->m_rect, 0);
+#endif
 			allowEmptyTextInput = pItemUIEdit->m_allowEmpty;
+#ifdef __PS3__
+			UiTextInputGuide = pItemUIEdit->m_hint;
+			UiTextInputMaxLength = pItemUIEdit->m_max_length;
+#endif
 #ifdef __SWITCH__
 			switch_start_text_input(pItemUIEdit->m_hint, pItemUIEdit->m_value, pItemUIEdit->m_max_length);
 #elif defined(__vita__)
@@ -275,11 +297,7 @@ void UiInitList(void (*fnFocus)(size_t value), void (*fnSelect)(size_t value), v
 			    .cursor = &pItemUIEdit->m_cursor,
 			    .maxLength = pItemUIEdit->m_max_length,
 			});
-#ifdef __PS3__
-			// The OSK edits the same bounded UTF-8 state used by SDL text events.
-			if (const auto text = PS3GetTextInput(pItemUIEdit->m_hint, pItemUIEdit->m_value, pItemUIEdit->m_max_length))
-				UiTextInputState->assign(*text);
-#endif
+
 		} else if (item->IsType(UiType::List)) {
 			auto *uiList = static_cast<UiList *>(item.get());
 			SelectedItemMax = std::max(uiList->m_vecItems.size() - 1, static_cast<size_t>(0));
@@ -321,6 +339,11 @@ void UiInitList_clear()
 	gfnListYesNo = nullptr;
 	gUiList = nullptr;
 	gUiItems.clear();
+#ifdef __PS3__
+	UiTextInputGuide.clear();
+	UiTextInputMaxLength = 0;
+	UiOskButtonConsumed = false;
+#endif
 	UiItemsWraps = false;
 }
 
@@ -478,6 +501,16 @@ void UiOnBackgroundChange()
 
 void UiFocusNavigation(SDL_Event *event)
 {
+#ifdef __PS3__
+	if (event->type == SDL_EVENT_JOYSTICK_BUTTON_UP && event->jbutton.button == JOY_BUTTON_Y && UiOskButtonConsumed) {
+		UiOskButtonConsumed = false;
+		return;
+	}
+	if (event->type == SDL_EVENT_JOYSTICK_BUTTON_DOWN && event->jbutton.button == JOY_BUTTON_Y && PS3OpenUiTextInputKeyboard()) {
+		UiOskButtonConsumed = true;
+		return;
+	}
+#endif
 	switch (event->type) {
 	case SDL_EVENT_KEY_UP:
 	case SDL_EVENT_MOUSE_BUTTON_UP:
@@ -636,6 +669,10 @@ void UiFocusNavigationSelect()
 		SDLC_StopTextInput(ghMainWnd);
 #endif
 		UiTextInputState = std::nullopt;
+#ifdef __PS3__
+		UiTextInputGuide.clear();
+		UiTextInputMaxLength = 0;
+#endif
 	}
 	if (gfnListSelect != nullptr)
 		gfnListSelect(SelectedItem);
@@ -649,6 +686,10 @@ void UiFocusNavigationEsc()
 		SDLC_StopTextInput(ghMainWnd);
 #endif
 		UiTextInputState = std::nullopt;
+#ifdef __PS3__
+		UiTextInputGuide.clear();
+		UiTextInputMaxLength = 0;
+#endif
 	}
 	if (gfnListEsc != nullptr)
 		gfnListEsc();

@@ -93,6 +93,9 @@ void CheckStashButtonRelease(Point mousePosition);
 void CheckStashButtonPress(Point mousePosition);
 
 void StartGoldWithdraw();
+#ifdef __PS3__
+bool PS3OpenGoldWithdrawKeyboard();
+#endif
 void WithdrawGoldKeyPress(SDL_Keycode vkey);
 void DrawGoldWithdraw(const Surface &out);
 void CloseGoldWithdraw();

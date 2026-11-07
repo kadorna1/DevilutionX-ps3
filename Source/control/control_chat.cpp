@@ -231,15 +231,23 @@ void TypeChatMessage()
 	RedrawEverything();
 	TalkSaveIndex = NextTalkSave;
 
-#ifdef __PS3__
-	if (const auto text = PS3GetTextInput(_("Enter chat message"), TalkMessage, sizeof(TalkMessage) - 1))
-		ChatInputState->assign(*text);
-#else
+#ifndef __PS3__
 	SDL_Rect rect = MakeSdlRect(GetMainPanel().position.x + 200, GetMainPanel().position.y + 22, 0, 27);
 	SDL_SetTextInputArea(ghMainWnd, &rect, /*cursor=*/0);
 	SDLC_StartTextInput(ghMainWnd);
 #endif
 }
+
+#ifdef __PS3__
+bool PS3OpenChatKeyboard()
+{
+	if (!IsChatActive() || !ChatInputState.has_value())
+		return false;
+	if (const auto text = PS3GetTextInput(_("Enter chat message"), TalkMessage, sizeof(TalkMessage) - 1))
+		ChatInputState->assign(*text);
+	return true;
+}
+#endif
 
 void ResetChat()
 {

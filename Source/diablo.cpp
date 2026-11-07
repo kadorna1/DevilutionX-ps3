@@ -93,6 +93,9 @@
 #include "panels/spell_book.hpp"
 #include "panels/spell_list.hpp"
 #include "pfile.h"
+#ifdef __PS3__
+#include "platform/ps3/input.h"
+#endif
 #include "plrmsg.h"
 #include "qol/chatlog.h"
 #include "qol/floatingnumbers.h"
@@ -178,6 +181,9 @@ extern void plrctrls_after_game_logic();
 namespace {
 
 char gszVersionNumber[64] = "internal version unknown";
+#ifdef __PS3__
+bool PS3OskButtonConsumed;
+#endif
 
 bool gbGameLoopStartup;
 bool forceSpawn;
@@ -752,6 +758,39 @@ void PrepareForFadeIn()
 void GameEventHandler(const SDL_Event &event, uint16_t modState)
 {
 	[[maybe_unused]] const Options &options = GetOptions();
+#ifdef __PS3__
+#if defined(JOY_BUTTON_Y)
+	if (event.type == SDL_EVENT_JOYSTICK_BUTTON_UP && event.jbutton.button == JOY_BUTTON_Y && PS3OskButtonConsumed) {
+		PS3OskButtonConsumed = false;
+		return;
+	}
+	if (event.type == SDL_EVENT_JOYSTICK_BUTTON_DOWN && event.jbutton.button == JOY_BUTTON_Y) {
+		const bool opened = (IsChatActive() && PS3OpenChatKeyboard())
+		    || (DropGoldFlag && PS3OpenGoldDropKeyboard())
+		    || (IsWithdrawGoldOpen && PS3OpenGoldWithdrawKeyboard());
+		if (opened) {
+			PS3OskButtonConsumed = true;
+			return;
+		}
+	}
+#endif
+#if defined(JOY_BUTTON_RIGHTSHOULDER)
+	if (event.type == SDL_EVENT_JOYSTICK_BUTTON_DOWN && event.jbutton.button == JOY_BUTTON_RIGHTSHOULDER) {
+		if (PS3IsMouseControlEnabled())
+			HandleMouseButtonDown(SDL_BUTTON_LEFT, modState);
+		else
+			PressKey(SDLK_RETURN, modState);
+		return;
+	}
+	if (event.type == SDL_EVENT_JOYSTICK_BUTTON_UP && event.jbutton.button == JOY_BUTTON_RIGHTSHOULDER) {
+		if (PS3IsMouseControlEnabled())
+			HandleMouseButtonUp(SDL_BUTTON_LEFT, modState);
+		else
+			ReleaseKey(SDLK_RETURN);
+		return;
+	}
+#endif
+#endif
 	StaticVector<ControllerButtonEvent, 4> ctrlEvents = ToControllerButtonEvents(event);
 	for (const ControllerButtonEvent ctrlEvent : ctrlEvents) {
 		GameAction action;
@@ -1412,6 +1451,11 @@ void DiabloSplash()
 }
 void DiabloDeinit()
 {
+#ifdef __PS3__
+	LogInfo("PS3 config save: shutdown save begin");
+	SaveOptions();
+	LogInfo("PS3 config save: shutdown save complete");
+#endif
 	FreeItemGFX();
 
 	LuaShutdown();
@@ -1514,6 +1558,9 @@ std::expected<void, std::string> LoadAllGFX()
 void CreateLevel(lvl_entry entry)
 {
 	PS3_LEVEL_LOAD_LOG("CreateLevel: begin");
+#ifdef __PS3__
+	LogInfo("PS3 level transition: level={} family={} entry={} seed={}", currlevel, static_cast<int>(leveltype), static_cast<int>(entry), DungeonSeeds[currlevel]);
+#endif
 	PS3_LEVEL_LOAD_LOG("CreateLevel: dungeon generation begin");
 	CreateDungeon(DungeonSeeds[currlevel], entry);
 	PS3_LEVEL_LOAD_LOG("CreateLevel: dungeon generation complete");

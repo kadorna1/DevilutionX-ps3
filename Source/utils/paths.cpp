@@ -30,6 +30,12 @@
 #include "utils/sdl2_to_1_2_backports.h"
 #endif
 
+#ifdef __PS3__
+#ifndef DEVILUTIONX_PS3_TITLE_ID
+#define DEVILUTIONX_PS3_TITLE_ID "DEVILUT00"
+#endif
+#endif
+
 namespace devilution {
 
 namespace paths {
@@ -76,9 +82,6 @@ std::string GetSdlBasePath()
 {
 	std::string result;
 #if defined(__PS3__)
-#ifndef DEVILUTIONX_PS3_TITLE_ID
-#define DEVILUTIONX_PS3_TITLE_ID "DEVILUT00"
-#endif
 	// The PS3 title USRDIR is writable and persists between launches.
 	result = "/dev_hdd0/game/" DEVILUTIONX_PS3_TITLE_ID "/USRDIR/";
 #elif defined(__DJGPP__)
@@ -134,7 +137,9 @@ const std::string &ConfigPath()
 {
 	if (!configPath) {
 #if defined(__PS3__)
-		configPath = GetSdlBasePath();
+		// Keep user configuration outside USRDIR so installing an update PKG
+		// cannot replace the saved settings file.
+		configPath = std::string("/dev_hdd0/game/") + DEVILUTIONX_PS3_TITLE_ID + "/";
 #elif defined(__DJGPP__)
 		configPath = std::string();
 #elif defined(__IPHONEOS__)

@@ -117,6 +117,9 @@ void DiscoverMods()
 }
 
 std::optional<Ini> ini;
+#ifdef __PS3__
+bool IniNeedsMigration;
+#endif
 
 #if (defined(__ANDROID__) && !defined(TERMUX)) || (defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE == 1)
 constexpr OptionEntryFlags OnlyIfSupportsWindowed = OptionEntryFlags::Invisible;
@@ -144,6 +147,17 @@ void LoadIni()
 	std::vector<char> buffer;
 	auto path = GetIniPath();
 	FILE *file = OpenFile(path.c_str(), "rb");
+#ifdef __PS3__
+	IniNeedsMigration = false;
+	if (file == nullptr) {
+		path = paths::BasePath() + "diablo.ini";
+		file = OpenFile(path.c_str(), "rb");
+		if (file != nullptr) {
+			IniNeedsMigration = true;
+			LogInfo("PS3 config: loading legacy USRDIR/diablo.ini for migration");
+		}
+	}
+#endif
 	if (file != nullptr) {
 		uintmax_t size;
 		if (GetFileSize(path.c_str(), &size)) {
@@ -165,7 +179,12 @@ void LoadIni()
 void SaveIni()
 {
 	if (!ini.has_value()) return;
-	if (!ini->changed()) return;
+	if (!ini->changed()
+#ifdef __PS3__
+	    && !IniNeedsMigration
+#endif
+	)
+		return;
 	if (!paths::ConfigPath().empty()) {
 		RecursivelyCreateDir(paths::ConfigPath().c_str());
 	}
@@ -182,6 +201,7 @@ void SaveIni()
 	if (out.Write(newContents.data(), newContents.size())) {
 		ini->markAsUnchanged();
 #ifdef __PS3__
+		IniNeedsMigration = false;
 		LogInfo("PS3 config save: diablo.ini marked unchanged after write");
 #endif
 	}
@@ -265,6 +285,7 @@ void LoadOptions()
 
 void SaveOptions()
 {
+	if (!ini.has_value()) return;
 	Options &options = GetOptions();
 	for (OptionCategoryBase *pCategory : options.GetCategories()) {
 		for (const OptionEntryBase *pEntry : pCategory->GetEntries()) {

@@ -75,7 +75,11 @@ std::vector<MenuAction> GetMenuActions(const SDL_Event &event)
 				menuActions.push_back(MenuAction_PAGE_UP);
 				break;
 			case ControllerButton_BUTTON_RIGHTSHOULDER:
+#ifdef __PS3__
+				menuActions.push_back(MenuAction_SELECT);
+#else
 				menuActions.push_back(MenuAction_PAGE_DOWN);
+#endif
 				break;
 			default:
 				break;

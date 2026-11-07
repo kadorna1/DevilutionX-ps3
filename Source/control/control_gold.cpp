@@ -125,13 +125,21 @@ void OpenGoldDrop(int8_t invIndex, int max)
 	    .min = 0,
 	    .max = max,
 	});
-#ifdef __PS3__
-	if (const auto text = PS3GetTextInput(_("Gold amount"), GoldDropText, sizeof(GoldDropText) - 1, /*numericOnly=*/true))
-		GoldDropInputState->assign(*text);
-#else
+#ifndef __PS3__
 	SDLC_StartTextInput(ghMainWnd);
 #endif
 }
+
+#ifdef __PS3__
+bool PS3OpenGoldDropKeyboard()
+{
+	if (!DropGoldFlag || !GoldDropInputState.has_value())
+		return false;
+	if (const auto text = PS3GetTextInput(_("Gold amount"), GoldDropText, sizeof(GoldDropText) - 1, /*numericOnly=*/true))
+		GoldDropInputState->assign(*text);
+	return true;
+}
+#endif
 
 void CloseGoldDrop()
 {

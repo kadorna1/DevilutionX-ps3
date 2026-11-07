@@ -1,6 +1,7 @@
 #include "levels/drlg_l3.h"
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <expected>
 
@@ -15,13 +16,12 @@
 #include "objects.h"
 #include "tables/questdat.hpp"
 #include "utils/is_of.hpp"
+#include "utils/log.hpp"
 #include "utils/status_macros.hpp"
 
 namespace devilution {
 
 namespace {
-
-int lockoutcnt;
 
 /**
  * A lookup table for the 16 possible patterns of a 2x2 area,
@@ -1884,43 +1884,57 @@ void HallOfHeroes()
 	}
 }
 
-void LockRectangle(int x, int y)
-{
-	if (!DungeonMask.test(x, y)) {
-		return;
-	}
-
-	DungeonMask.reset(x, y);
-	lockoutcnt++;
-	LockRectangle(x, y - 1);
-	LockRectangle(x, y + 1);
-	LockRectangle(x - 1, y);
-	LockRectangle(x + 1, y);
-}
-
 bool Lockout()
 {
 	DungeonMask.reset();
 
-	int fx;
-	int fy;
-
-	int t = 0;
-	for (int j = 0; j < DMAXY; j++) {
-		for (int i = 0; i < DMAXX; i++) {
-			if (dungeon[i][j] != 0) {
-				DungeonMask.set(i, j);
-				fx = i;
-				fy = j;
-				t++;
-			}
+	int floorCount = 0;
+	int startX = -1;
+	int startY = -1;
+	for (int y = 0; y < DMAXY; y++) {
+		for (int x = 0; x < DMAXX; x++) {
+			if (dungeon[x][y] == 0)
+				continue;
+			DungeonMask.set(x, y);
+			startX = x;
+			startY = y;
+			++floorCount;
 		}
 	}
 
-	lockoutcnt = 0;
-	LockRectangle(fx, fy);
+	if (floorCount == 0)
+		return false;
 
-	return t == lockoutcnt;
+	// A connected cave may span nearly the full map. An iterative worklist
+	// avoids recursion proportional to map area on the PS3 game-thread stack.
+	// Mark at enqueue time so every tile occupies the fixed array at most once.
+	static std::array<uint16_t, DMAXX * DMAXY> pending;
+	std::size_t pendingCount = 0;
+	std::size_t nextPending = 0;
+	const auto enqueue = [&](int x, int y) {
+		if (x < 0 || x >= DMAXX || y < 0 || y >= DMAXY)
+			return;
+		const std::size_t tileX = static_cast<std::size_t>(x);
+		const std::size_t tileY = static_cast<std::size_t>(y);
+		if (!DungeonMask.test(tileX, tileY))
+			return;
+		DungeonMask.reset(tileX, tileY);
+		pending[pendingCount++] = static_cast<uint16_t>(y * DMAXX + x);
+	};
+
+	enqueue(startX, startY);
+	int connectedCount = 0;
+	while (nextPending < pendingCount) {
+		const uint16_t index = pending[nextPending++];
+		const int x = index % DMAXX;
+		const int y = index / DMAXX;
+		++connectedCount;
+		enqueue(x, y - 1);
+		enqueue(x, y + 1);
+		enqueue(x - 1, y);
+		enqueue(x + 1, y);
+	}
+	return floorCount == connectedCount;
 }
 
 bool PlaceCaveStairs(lvl_entry entry)
@@ -1990,7 +2004,22 @@ void GenerateLevel(lvl_entry entry)
 	if (LevelSeeds[currlevel])
 		SetRndSeed(*LevelSeeds[currlevel]);
 
+#ifdef __PS3__
+	uint32_t generationAttempts = 0;
+	uint32_t floorAreaRejections = 0;
+	uint32_t connectivityRejections = 0;
+	uint32_t stairRejections = 0;
+	uint32_t anvilRejections = 0;
+	uint32_t poolRejections = 0;
+#endif
+
 	while (true) {
+#ifdef __PS3__
+		++generationAttempts;
+		if (generationAttempts == 1 || generationAttempts % 128 == 0)
+			LogInfo("PS3 cave/hive generation: level {} type {} attempt {} begin (random state {})",
+			    currlevel, static_cast<int>(leveltype), generationAttempts, GetLCGEngineState());
+#endif
 		LevelSeeds[currlevel] = GetLCGEngineState();
 		InitDungeonFlags();
 		int x1 = GenerateRnd(20) + 10;
@@ -2014,16 +2043,53 @@ void GenerateLevel(lvl_entry entry)
 		FillStraights();
 		FillDiagonals();
 		Edges();
-		if (GetFloorArea() < 600 || !Lockout())
+		const int floorArea = GetFloorArea();
+		if (floorArea < 600) {
+#ifdef __PS3__
+			++floorAreaRejections;
+			if (generationAttempts <= 4 || generationAttempts % 128 == 0)
+				LogInfo("PS3 cave/hive generation: retry {} (floor area {})", generationAttempts, floorArea);
+#endif
 			continue;
+		}
+		if (!Lockout()) {
+#ifdef __PS3__
+			++connectivityRejections;
+			if (generationAttempts <= 4 || generationAttempts % 128 == 0)
+				LogInfo("PS3 cave/hive generation: retry {} (disconnected floor)", generationAttempts);
+#endif
+			continue;
+		}
 		MakeMegas();
-		if (!PlaceStairs(entry))
+		if (!PlaceStairs(entry)) {
+#ifdef __PS3__
+			++stairRejections;
+			if (generationAttempts <= 4 || generationAttempts % 128 == 0)
+				LogInfo("PS3 cave/hive generation: retry {} (stairs)", generationAttempts);
+#endif
 			continue;
-		if (Quests[Q_ANVIL].IsAvailable() && !PlaceAnvil())
+		}
+		if (Quests[Q_ANVIL].IsAvailable() && !PlaceAnvil()) {
+#ifdef __PS3__
+			++anvilRejections;
+			if (generationAttempts <= 4 || generationAttempts % 128 == 0)
+				LogInfo("PS3 cave/hive generation: retry {} (anvil)", generationAttempts);
+#endif
 			continue;
+		}
 		if (PlacePool())
 			break;
+#ifdef __PS3__
+		++poolRejections;
+		if (generationAttempts <= 4 || generationAttempts % 128 == 0)
+			LogInfo("PS3 cave/hive generation: retry {} (pool)", generationAttempts);
+#endif
 	}
+
+#ifdef __PS3__
+	LogInfo("PS3 cave/hive generation: level {} completed after {} attempts (floor {}, connectivity {}, stairs {}, anvil {}, pool {})",
+	    currlevel, generationAttempts, floorAreaRejections, connectivityRejections, stairRejections, anvilRejections, poolRejections);
+#endif
 
 	if (leveltype == DTYPE_NEST) {
 		PlaceMiniSetRandom(L6ISLE1, 70);

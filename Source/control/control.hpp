@@ -202,6 +202,10 @@ extern bool DropGoldFlag;
 void DrawGoldSplit(const Surface &out);
 void control_drop_gold(SDL_Keycode vkey);
 void OpenGoldDrop(int8_t invIndex, int max);
+#ifdef __PS3__
+bool PS3OpenChatKeyboard();
+bool PS3OpenGoldDropKeyboard();
+#endif
 void CloseGoldDrop();
 bool HandleGoldDropTextInputEvent(const SDL_Event &event);
 

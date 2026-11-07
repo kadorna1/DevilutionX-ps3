@@ -598,9 +598,11 @@ void StartGoldWithdraw()
 	if (ChatFlag)
 		ResetChat();
 
+#ifndef __PS3__
 	const Point start = GetPanelPosition(UiPanels::Stash, { 67, 128 });
 	SDL_Rect rect = MakeSdlRect(start.x, start.y, 180, 20);
 	SDL_SetTextInputArea(ghMainWnd, &rect, /*cursor=*/0);
+#endif
 
 	IsWithdrawGoldOpen = true;
 	GoldWithdrawText[0] = '\0';
@@ -613,13 +615,21 @@ void StartGoldWithdraw()
 	    .min = 0,
 	    .max = std::min(RoomForGold(), Stash.gold),
 	});
-#ifdef __PS3__
-	if (const auto text = PS3GetTextInput(_("Gold amount"), GoldWithdrawText, sizeof(GoldWithdrawText) - 1, /*numericOnly=*/true))
-		GoldWithdrawInputState->assign(*text);
-#else
+#ifndef __PS3__
 	SDLC_StartTextInput(ghMainWnd);
 #endif
 }
+
+#ifdef __PS3__
+bool PS3OpenGoldWithdrawKeyboard()
+{
+	if (!IsWithdrawGoldOpen || !GoldWithdrawInputState.has_value())
+		return false;
+	if (const auto text = PS3GetTextInput(_("Gold amount"), GoldWithdrawText, sizeof(GoldWithdrawText) - 1, /*numericOnly=*/true))
+		GoldWithdrawInputState->assign(*text);
+	return true;
+}
+#endif
 
 void WithdrawGoldKeyPress(SDL_Keycode vkey)
 {
