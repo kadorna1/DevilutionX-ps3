@@ -117,7 +117,7 @@ std::optional<TextInputState> UiTextInputState;
 #ifdef __PS3__
 std::string UiTextInputGuide;
 std::size_t UiTextInputMaxLength;
-bool UiOskButtonConsumed;
+ControllerButton UiOskButtonConsumed = ControllerButton_NONE;
 #endif
 bool allowEmptyTextInput = false;
 
@@ -342,7 +342,7 @@ void UiInitList_clear()
 #ifdef __PS3__
 	UiTextInputGuide.clear();
 	UiTextInputMaxLength = 0;
-	UiOskButtonConsumed = false;
+	UiOskButtonConsumed = ControllerButton_NONE;
 #endif
 	UiItemsWraps = false;
 }
@@ -502,13 +502,19 @@ void UiOnBackgroundChange()
 void UiFocusNavigation(SDL_Event *event)
 {
 #ifdef __PS3__
-	if (event->type == SDL_EVENT_JOYSTICK_BUTTON_UP && event->jbutton.button == JOY_BUTTON_Y && UiOskButtonConsumed) {
-		UiOskButtonConsumed = false;
-		return;
-	}
-	if (event->type == SDL_EVENT_JOYSTICK_BUTTON_DOWN && event->jbutton.button == JOY_BUTTON_Y && PS3OpenUiTextInputKeyboard()) {
-		UiOskButtonConsumed = true;
-		return;
+	for (const ControllerButtonEvent ctrlEvent : ToControllerButtonEvents(*event)) {
+		if (UiOskButtonConsumed != ControllerButton_NONE
+		    && ctrlEvent.up && ctrlEvent.button == UiOskButtonConsumed) {
+			UiOskButtonConsumed = ControllerButton_NONE;
+			return;
+		}
+		if (!ctrlEvent.up && UiTextInputState.has_value()
+		    && (ctrlEvent.button == ControllerButton_BUTTON_Y
+		        || ctrlEvent.button == ControllerButton_BUTTON_RIGHTSHOULDER)
+		    && PS3OpenUiTextInputKeyboard()) {
+			UiOskButtonConsumed = ctrlEvent.button;
+			return;
+		}
 	}
 #endif
 	switch (event->type) {

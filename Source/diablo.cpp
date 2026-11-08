@@ -37,6 +37,7 @@
 #endif
 #include "DiabloUI/diabloui.h"
 #include "controls/control_mode.hpp"
+#include "controls/controller.h"
 #include "controls/keymapper.hpp"
 #include "controls/plrctrls.h"
 #include "controls/remap_keyboard.h"
@@ -182,7 +183,7 @@ namespace {
 
 char gszVersionNumber[64] = "internal version unknown";
 #ifdef __PS3__
-bool PS3OskButtonConsumed;
+ControllerButton PS3OskButtonConsumed = ControllerButton_NONE;
 #endif
 
 bool gbGameLoopStartup;
@@ -758,40 +759,46 @@ void PrepareForFadeIn()
 void GameEventHandler(const SDL_Event &event, uint16_t modState)
 {
 	[[maybe_unused]] const Options &options = GetOptions();
+	StaticVector<ControllerButtonEvent, 4> ctrlEvents = ToControllerButtonEvents(event);
 #ifdef __PS3__
-#if defined(JOY_BUTTON_Y)
-	if (event.type == SDL_EVENT_JOYSTICK_BUTTON_UP && event.jbutton.button == JOY_BUTTON_Y && PS3OskButtonConsumed) {
-		PS3OskButtonConsumed = false;
-		return;
-	}
-	if (event.type == SDL_EVENT_JOYSTICK_BUTTON_DOWN && event.jbutton.button == JOY_BUTTON_Y) {
-		const bool opened = (IsChatActive() && PS3OpenChatKeyboard())
-		    || (DropGoldFlag && PS3OpenGoldDropKeyboard())
-		    || (IsWithdrawGoldOpen && PS3OpenGoldWithdrawKeyboard());
-		if (opened) {
-			PS3OskButtonConsumed = true;
+	for (const ControllerButtonEvent ctrlEvent : ctrlEvents) {
+		// PSL1GHT delivers the physical pad through SDL_CONTROLLERBUTTON* events.
+		// Match DevilutionX's normalized controller buttons instead of raw
+		// SDL_JOYBUTTON* indices, which are not present for those events.
+		if (PS3OskButtonConsumed != ControllerButton_NONE
+		    && ctrlEvent.up && ctrlEvent.button == PS3OskButtonConsumed) {
+			PS3OskButtonConsumed = ControllerButton_NONE;
+			return;
+		}
+
+		if (!ctrlEvent.up
+		    && (ctrlEvent.button == ControllerButton_BUTTON_Y
+		        || ctrlEvent.button == ControllerButton_BUTTON_RIGHTSHOULDER)) {
+			const bool opened = (IsChatActive() && PS3OpenChatKeyboard())
+			    || (DropGoldFlag && PS3OpenGoldDropKeyboard())
+			    || (IsWithdrawGoldOpen && PS3OpenGoldWithdrawKeyboard());
+			if (opened) {
+				PS3OskButtonConsumed = ctrlEvent.button;
+				return;
+			}
+		}
+
+		if (ctrlEvent.button == ControllerButton_BUTTON_RIGHTSHOULDER) {
+			if (!ctrlEvent.up) {
+				if (PS3IsMouseControlEnabled())
+					HandleMouseButtonDown(SDL_BUTTON_LEFT, modState);
+				else
+					PressKey(SDLK_RETURN, modState);
+			} else {
+				if (PS3IsMouseControlEnabled())
+					HandleMouseButtonUp(SDL_BUTTON_LEFT, modState);
+				else
+					ReleaseKey(SDLK_RETURN);
+			}
 			return;
 		}
 	}
 #endif
-#if defined(JOY_BUTTON_RIGHTSHOULDER)
-	if (event.type == SDL_EVENT_JOYSTICK_BUTTON_DOWN && event.jbutton.button == JOY_BUTTON_RIGHTSHOULDER) {
-		if (PS3IsMouseControlEnabled())
-			HandleMouseButtonDown(SDL_BUTTON_LEFT, modState);
-		else
-			PressKey(SDLK_RETURN, modState);
-		return;
-	}
-	if (event.type == SDL_EVENT_JOYSTICK_BUTTON_UP && event.jbutton.button == JOY_BUTTON_RIGHTSHOULDER) {
-		if (PS3IsMouseControlEnabled())
-			HandleMouseButtonUp(SDL_BUTTON_LEFT, modState);
-		else
-			ReleaseKey(SDLK_RETURN);
-		return;
-	}
-#endif
-#endif
-	StaticVector<ControllerButtonEvent, 4> ctrlEvents = ToControllerButtonEvents(event);
 	for (const ControllerButtonEvent ctrlEvent : ctrlEvents) {
 		GameAction action;
 		if (HandleControllerButtonEvent(event, ctrlEvent, action) && action.type == GameActionType_SEND_KEY) {

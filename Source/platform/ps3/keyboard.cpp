@@ -104,6 +104,7 @@ std::optional<std::string> PS3GetTextInput(
 	if (maxUtf8Bytes == 0)
 		return std::nullopt;
 
+	LogInfo("PS3 OSK: request accepted by game, max_utf8_bytes={} numeric_only={}", maxUtf8Bytes, numericOnly);
 	OskGuideText.fill(0);
 	OskInitialText.fill(0);
 	OskOutputText.fill(0);
