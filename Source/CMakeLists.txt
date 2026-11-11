@@ -218,6 +218,8 @@ target_link_dependencies(libdevilutionx_assets PUBLIC
   libdevilutionx_sdl2_to_1_2_backports
   libdevilutionx_strings
   ${DEVILUTIONX_PLATFORM_ASSETS_LINK_LIBRARIES}
+  PRIVATE
+  magic_enum::magic_enum
 )
 
 add_devilutionx_object_library(libdevilutionx_cel_to_clx
