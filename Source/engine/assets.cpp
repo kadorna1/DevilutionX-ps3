@@ -569,12 +569,13 @@ std::optional<MpqReleaseProfileId> IdentifyMpqReleaseProfile(const std::string &
 	return std::nullopt;
 }
 
-bool LoadRetailPatchArchive(std::span<const std::string> paths)
+bool LoadRetailPatchArchive(std::span<const std::string> paths, bool shareware)
 {
 	constexpr int RetailPatchMpqPriority = 1050;
-	const bool loaded = LoadMPQCaseVariants(paths, "Patch_rt", RetailPatchMpqPriority);
+	const std::string_view patchName = shareware ? "Patch_sh" : "Patch_rt";
+	const bool loaded = LoadMPQCaseVariants(paths, patchName, RetailPatchMpqPriority);
 	if (loaded)
-		LogInfo("MPQ database: mounted optional Patch_rt.mpq at priority {}", RetailPatchMpqPriority);
+		LogInfo("MPQ database: mounted optional {}.mpq at priority {}", patchName, RetailPatchMpqPriority);
 	return loaded;
 }
 #endif
@@ -800,7 +801,7 @@ void LoadGameArchives()
 
 #ifndef UNPACKED_MPQS
 	// Blizzard retail updates are separate overlays and do not rewrite DIABDAT.MPQ.
-	LoadRetailPatchArchive(paths);
+	LoadRetailPatchArchive(paths, haveSpawn);
 #endif
 
 	// Optional high-priority archive containing browser-generated H.264/PCM
@@ -826,6 +827,9 @@ void LoadGameArchives()
 	// Optional character packs from some Hellfire releases; accept CD filename casing.
 	LoadMPQCaseVariants(paths, "hfbard", 8110);
 	LoadMPQCaseVariants(paths, "hfbarb", 8120);
+	// Optional Hellfire data packs precede the standard HF resources.
+	LoadMPQCaseVariants(paths, "hfopt2", 8700);
+	LoadMPQCaseVariants(paths, "hfopt1", 8600);
 
 	// Configured archives sit above base/Hellfire/language MPQs and below fonts/mods.
 	LoadAdditionalMpqOverlays(paths);

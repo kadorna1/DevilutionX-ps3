@@ -22,15 +22,19 @@ The game streams the whole-file MD5 in fixed 64 KiB chunks. It never loads the 5
 - **GOG-enhanced digital release:** the upstream maintainer identifies its DIABDAT.MPQ as matching the EU/Mac family, so it reuses that profile.
 - **Blizzard Battle.net-compatible digital release:** Blizzard says this is the original, unchanged Battle.net-compatible edition, distinct from the GOG-enhanced release. The Battle.net product is accepted by the DevilutionX MPQ instructions, but no independently published whole-file hash tying that specific install to either catalogue entry was found. It will still match automatically if its actual bytes equal a verified archive; otherwise it uses the generic profile. See [Blizzard's edition FAQ](https://news.blizzard.com/en-us/article/22887361/diablo-now-available-on-gog-com) and [MPQ requirements](https://devilutionx.com/mpq).
 - **Other regional PC CDs and budget re-releases:** no additional independently verified full-game DIABDAT hashes were found in the upstream compatibility record. They are accepted with generic loading behavior; no guessed regional checksums are included.
-- **Hellfire retail CD, GOG add-on and Battle.net-compatible add-on:** the standard expansion set is hellfire.mpq, hfmonk.mpq, hfmusic.mpq and hfvoice.mpq. The GOG extraction guide confirms those four archive names and their installer paths. No complete trustworthy checksum set for individual Hellfire archives was found, so these are catalogued by layout but not falsely identified by checksum. Optional hfbard.mpq and hfbarb.mpq are still loaded when present.
-- **Shareware/demo:** spawn.mpq remains supported as the shareware archive and is catalogued separately from full-game releases.
+- **Hellfire retail CD, GOG add-on and Battle.net-compatible add-on:** the required expansion set is hellfire.mpq, hfmonk.mpq, hfmusic.mpq and hfvoice.mpq. Optional hfopt2.mpq, hfopt1.mpq, hfbarb.mpq and hfbard.mpq are also detected and mounted in the upstream resource precedence order. The GOG extraction guide confirms the four required names. No complete trustworthy checksum set for individual Hellfire archives was found, so none are assigned guessed hashes.
+- **Shareware/demo:** spawn.mpq remains supported as the shareware archive and is catalogued separately from full-game releases. When spawn.mpq is selected, optional Patch_sh.mpq is used; full retail DIABDAT.MPQ uses Patch_rt.mpq instead.
 - **Language assets:** locale-code voice archives (such as pl.mpq and ru.mpq) and CJK fonts.mpq remain separate from the base-game release identity. They are loaded using the existing locale/font systems or the configurable overlay list.
 
 The GOG installer extraction guide lists DIABDAT.MPQ plus the four Hellfire MPQs: [DevilutionX GOG extraction instructions](https://github.com/diasurgical/DevilutionX/wiki/Extracting-MPQs-from-the-GOG-installer). Current MPQ requirements also list CD, GOG and Battle.net as accepted sources: [DevilutionX MPQ instructions](https://devilutionx.com/mpq).
 
 ## Retail patch handling
 
-The loader now detects Patch_rt.mpq with common uppercase, lowercase and mixed-case filename forms and mounts it at priority 1050, above DIABDAT.MPQ (1000) and below the PS3 VDEC sidecar archive (1100). This follows the maintainer's note that updates are supplied separately as Patch_rt.mpq.
+The loader detects Patch_rt.mpq for full retail data and Patch_sh.mpq for shareware data. The selected patch is mounted at priority 1050, above DIABDAT.MPQ/spawn.mpq (1000), below the PS3 VDEC sidecar archive (1100), and below all Hellfire archives. Patch files are optional. This follows the upstream maintainer's resource-order notes, which put patch archives directly above the base game archive.
+
+## Hellfire and retail archive precedence
+
+When present, optional Hellfire packs use the higher-priority-first order documented by the upstream maintainer: hfopt2, hfopt1, hfvoice, hfmusic, hfbarb, hfbard, hfmonk, then hellfire. User-configured overlays remain above these built-in packs. Patch_rt or Patch_sh is mounted above the base game archive but below the Hellfire pack family. See [the upstream resource-order discussion](https://github.com/diasurgical/DevilutionX/discussions/1262).
 
 ## Filename casing
 

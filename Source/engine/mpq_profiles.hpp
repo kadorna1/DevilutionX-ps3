@@ -59,7 +59,7 @@ inline constexpr std::array<MpqReleaseProfileConfig, 3> MpqReleaseProfiles {{
  * - Unverified entries remain supported as input layouts, but use generic boot
  *   configuration unless their bytes match one of the verified fingerprints.
  */
-inline constexpr std::array<MpqDistributionRecord, 9> MpqDistributionCatalogue {{
+inline constexpr std::array<MpqDistributionRecord, 11> MpqDistributionCatalogue {{
 	{
 		"Original US retail Diablo PC CD, version 1.00",
 		"CD-ROM",
@@ -123,6 +123,22 @@ inline constexpr std::array<MpqDistributionRecord, 9> MpqDistributionCatalogue {
 		MpqFingerprintStatus::NotPublished,
 		MpqReleaseProfileId::Unknown,
 		"Accepted source according to the MPQ instructions; per-file archive digests are not published."
+	},
+	{
+		"Hellfire optional data archives",
+		"Retail expansion CD / digital package",
+		"hfopt1.mpq; hfopt2.mpq",
+		MpqFingerprintStatus::NotPublished,
+		MpqReleaseProfileId::Unknown,
+		"Optional archives are mounted in the upstream resource precedence order; no trustworthy whole-file hashes were published."
+	},
+	{
+		"Diablo retail and shareware patches",
+		"Retail CD / update media",
+		"Patch_rt.mpq; Patch_sh.mpq",
+		MpqFingerprintStatus::NotPublished,
+		MpqReleaseProfileId::Unknown,
+		"Patch_rt is selected for the full retail archive and Patch_sh for spawn.mpq; patch archives are optional and are not included in the release fingerprint catalogue."
 	},
 	{
 		"Diablo shareware / demo",
