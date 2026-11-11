@@ -886,6 +886,10 @@ private:
 };
 
 struct Options {
+	// Additional user-supplied MPQ archives loaded as resource overlays.
+	// Values are read from repeated [MPQ] Additional entries in diablo.ini.
+	std::vector<std::string> additionalMpqs;
+
 	GameModeOptions GameMode;
 	StartUpOptions StartUp;
 	DiabloOptions Diablo;

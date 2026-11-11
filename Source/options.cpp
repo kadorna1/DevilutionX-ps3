@@ -262,6 +262,11 @@ void LoadOptions()
 	}
 
 	ini->getUtf8Buf("Hellfire", "SItem", options.Hellfire.szItem, sizeof(options.Hellfire.szItem));
+	options.additionalMpqs.clear();
+	for (const Ini::Value &value : ini->get("MPQ", "Additional")) {
+		if (!value.value.empty())
+			options.additionalMpqs.emplace_back(value.value);
+	}
 	ini->getUtf8Buf("Network", "Bind Address", "0.0.0.0", options.Network.szBindAddress, sizeof(options.Network.szBindAddress));
 	ini->getUtf8Buf("Network", "Previous Game ID", options.Network.szPreviousZTGame, sizeof(options.Network.szPreviousZTGame));
 	ini->getUtf8Buf("Network", "Previous Host", options.Network.szPreviousHost, sizeof(options.Network.szPreviousHost));
@@ -303,6 +308,7 @@ void SaveOptions()
 		ini->set("NetMsg", QuickMessages[i].key, options.Chat.szHotKeyMsgs[i]);
 	}
 
+	ini->set("MPQ", "Additional", options.additionalMpqs);
 	ini->set("Controller", "Mapping", options.Controller.szMapping);
 	ini->set("Controller", "deadzone", options.Controller.fDeadzone);
 #ifdef __vita__

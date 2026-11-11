@@ -46,13 +46,34 @@ to rebuild only changed translation units.
 3. To use Hellfire, also copy the original expansion files
    hellfire.mpq, hfmonk.mpq, hfmusic.mpq, and hfvoice.mpq
    into the same USRDIR directory.
+4. Optional localized CD overlays can be copied beside DIABDAT.MPQ, for
+   example diabger.mpq (German Diablo data) and hfger.mpq (German Hellfire
+   data). The base Diablo archive—and the normal Hellfire archives when using
+   Hellfire—are still required.
+
+To enable additional archives, edit
+`/dev_hdd0/game/DEVILUT00/diablo.ini` and add one `Additional` entry per
+archive under an `[MPQ]` section. You may include or omit the `.mpq`
+extension; names are matched in lower- and uppercase. For example:
+
+```ini
+[MPQ]
+Additional=diabger
+Additional=hfger
+```
+
+Entries may also be comma-separated on a single line. They are loaded in the
+listed order as overlays above the base game, Hellfire, and language archives.
+The font archive and enabled mods retain higher priority. Unknown or invalid
+entries are skipped with a log warning.
 
 The PKG includes only the DevilutionX engine and its built-in redistributable
 assets. It does not include Diablo or Hellfire game data. You must supply files
 from a copy of the original game that you are entitled to use.
 
 The PS3 build stores saves and configuration in the title's writable
-USRDIR directory. The title ID is DEVILUT00.
+game directory. The title ID is DEVILUT00; the configuration file is outside
+USRDIR so installing an update PKG does not overwrite it.
 
 ## Browser-only FMV converter
 

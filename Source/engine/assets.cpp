@@ -7,6 +7,7 @@
 #include <expected>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string_view>
 #include <vector>
 
@@ -20,6 +21,7 @@
 #include "appfat.h"
 #include "game_mode.hpp"
 #include "mods/mod_identity.h"
+#include "options.h"
 #include "utils/file_util.h"
 #include "utils/format.hpp"
 #include "utils/log.hpp"
@@ -508,6 +510,99 @@ std::vector<std::string> GetMPQSearchPaths()
 	return paths;
 }
 
+#ifndef UNPACKED_MPQS
+std::optional<std::string> NormalizeAdditionalMpqName(std::string_view configuredName)
+{
+	while (!configuredName.empty() && (configuredName.front() == ' ' || configuredName.front() == '\t'))
+		configuredName.remove_prefix(1);
+	while (!configuredName.empty() && (configuredName.back() == ' ' || configuredName.back() == '\t'))
+		configuredName.remove_suffix(1);
+
+	if (configuredName.size() >= 4 && AsciiStrToLower(configuredName.substr(configuredName.size() - 4)) == ".mpq")
+		configuredName.remove_suffix(4);
+
+	if (configuredName.empty() || configuredName.size() > 64)
+		return std::nullopt;
+
+	for (const unsigned char character : configuredName) {
+		const bool isAlphaNumeric = (character >= 'a' && character <= 'z')
+		    || (character >= 'A' && character <= 'Z')
+		    || (character >= '0' && character <= '9');
+		if (!isAlphaNumeric && character != '_' && character != '-')
+			return std::nullopt;
+	}
+
+	return std::string(configuredName);
+}
+
+void LoadAdditionalMpqOverlays(const std::vector<std::string> &paths)
+{
+	constexpr int FirstAdditionalMpqPriority = 9150;
+	constexpr int LastAdditionalMpqPriority = 9199;
+	int priority = FirstAdditionalMpqPriority;
+	std::vector<std::string> attemptedNames;
+
+	auto loadOne = [&](std::string_view configuredName) {
+		const std::optional<std::string> normalizedName = NormalizeAdditionalMpqName(configuredName);
+		if (!normalizedName) {
+			if (!configuredName.empty())
+				LogWarn("MPQ overlay: ignoring unsafe archive name '{}'", configuredName);
+			return;
+		}
+
+		const std::string dedupeKey = AsciiStrToLower(*normalizedName);
+		if (std::find(attemptedNames.begin(), attemptedNames.end(), dedupeKey) != attemptedNames.end())
+			return;
+		attemptedNames.push_back(dedupeKey);
+
+		if (priority > LastAdditionalMpqPriority) {
+			LogWarn("MPQ overlay: reached the limit of {} configured archives", LastAdditionalMpqPriority - FirstAdditionalMpqPriority + 1);
+			return;
+		}
+
+		LogInfo("MPQ overlay: searching for '{}'", *normalizedName);
+		std::string loadedPath;
+		bool loaded = LoadMPQ(paths, *normalizedName, priority, ".mpq", &loadedPath);
+		if (!loaded)
+			loaded = LoadMPQ(paths, *normalizedName, priority, ".MPQ", &loadedPath);
+
+		// Original CD data commonly uses uppercase 8.3-style filenames. Try that
+		// spelling too, since the PS3 filesystem may be case-sensitive.
+		if (!loaded) {
+			std::string upperName = *normalizedName;
+			std::transform(upperName.begin(), upperName.end(), upperName.begin(), [](unsigned char character) {
+				return character >= 'a' && character <= 'z' ? static_cast<char>(character - 'a' + 'A') : static_cast<char>(character);
+			});
+			if (upperName != *normalizedName) {
+				loaded = LoadMPQ(paths, upperName, priority, ".MPQ", &loadedPath);
+				if (!loaded)
+					loaded = LoadMPQ(paths, upperName, priority, ".mpq", &loadedPath);
+			}
+		}
+
+		if (!loaded) {
+			LogWarn("MPQ overlay: configured archive '{}' was not found or could not be opened", *normalizedName);
+			return;
+		}
+
+		LogInfo("MPQ overlay: loaded '{}' at priority {}", loadedPath, priority);
+		++priority;
+	};
+
+	for (const std::string &configuredEntry : GetOptions().additionalMpqs) {
+		std::string_view remaining = configuredEntry;
+		while (true) {
+			const std::size_t separator = remaining.find(',');
+			const std::string_view item = separator == std::string_view::npos ? remaining : remaining.substr(0, separator);
+			loadOne(item);
+			if (separator == std::string_view::npos)
+				break;
+			remaining.remove_prefix(separator + 1);
+		}
+	}
+}
+#endif
+
 } // namespace
 
 void LoadCoreArchives()
@@ -576,6 +671,11 @@ void LoadGameArchives()
 	// In unpacked mode, all the hellfire data is in the hellfire directory.
 	LoadMPQ(paths, "hfbard", 8110);
 	LoadMPQ(paths, "hfbarb", 8120);
+
+	// Configured overlays sit above the base game, Hellfire and language MPQs,
+	// but below fonts.mpq and user mods. This lets localized CD archives such
+	// as diabger.mpq and hfger.mpq replace their original game resources.
+	LoadAdditionalMpqOverlays(paths);
 #endif
 }
 
