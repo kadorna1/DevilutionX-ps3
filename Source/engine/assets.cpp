@@ -1,6 +1,7 @@
 #include "engine/assets.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -25,6 +26,7 @@
 #include "utils/file_util.h"
 #include "utils/format.hpp"
 #include "utils/log.hpp"
+#include "utils/md5.hpp"
 #include "utils/paths.h"
 #include "utils/sdl_compat.h"
 #include "utils/str_case.hpp"
@@ -446,6 +448,137 @@ bool LoadMPQ(std::span<const std::string> paths, std::string_view mpqName, int p
 }
 #endif
 
+
+MpqReleaseProfileId DetectedMpqReleaseProfile = MpqReleaseProfileId::Unknown;
+
+std::vector<std::string> GetMpqNameVariants(std::string_view name)
+{
+	std::vector<std::string> result;
+	auto addUnique = [&result](std::string candidate) {
+		if (std::find(result.begin(), result.end(), candidate) == result.end())
+			result.push_back(std::move(candidate));
+	};
+
+	addUnique(std::string(name));
+	addUnique(AsciiStrToLower(name));
+
+	std::string upper(name);
+	std::transform(upper.begin(), upper.end(), upper.begin(), [](unsigned char c) {
+		return c >= 'a' && c <= 'z' ? static_cast<char>(c - 'a' + 'A') : static_cast<char>(c);
+	});
+	addUnique(std::move(upper));
+
+	std::string title = AsciiStrToLower(name);
+	if (!title.empty() && title.front() >= 'a' && title.front() <= 'z')
+		title.front() = static_cast<char>(title.front() - 'a' + 'A');
+	addUnique(std::move(title));
+	return result;
+}
+
+bool FindMPQCaseVariants(std::span<const std::string> paths, std::string_view name)
+{
+	const std::vector<std::string> names = GetMpqNameVariants(name);
+#ifdef UNPACKED_MPQS
+	for (const std::string &candidate : names) {
+		if (FindMPQ(paths, candidate))
+			return true;
+	}
+#else
+	constexpr std::array<std::string_view, 4> Extensions { ".mpq", ".MPQ", ".Mpq", ".mPQ" };
+	for (const std::string &candidate : names) {
+		for (const std::string_view extension : Extensions) {
+			for (const std::string &path : paths) {
+				if (FileExists(StrCat(path, candidate, extension)))
+					return true;
+			}
+		}
+	}
+#endif
+	return false;
+}
+
+bool LoadMPQCaseVariants(
+    std::span<const std::string> paths, std::string_view name, int priority
+#ifndef UNPACKED_MPQS
+    , std::string *loadedPath = nullptr
+#endif
+)
+{
+	const std::vector<std::string> names = GetMpqNameVariants(name);
+#ifdef UNPACKED_MPQS
+	for (const std::string &candidate : names) {
+		if (LoadMPQ(paths, candidate, priority))
+			return true;
+	}
+#else
+	constexpr std::array<std::string_view, 4> Extensions { ".mpq", ".MPQ", ".Mpq", ".mPQ" };
+	for (const std::string &candidate : names) {
+		for (const std::string_view extension : Extensions) {
+			if (LoadMPQ(paths, candidate, priority, extension, loadedPath))
+				return true;
+		}
+	}
+#endif
+	return false;
+}
+
+#ifndef UNPACKED_MPQS
+std::optional<MpqReleaseProfileId> IdentifyMpqReleaseProfile(const std::string &mpqPath)
+{
+	std::uintmax_t fileSize = 0;
+	if (!GetFileSize(mpqPath.c_str(), &fileSize)) {
+		LogWarn("MPQ database: unable to read size for {}", mpqPath);
+		return std::nullopt;
+	}
+
+	bool hasCandidate = false;
+	for (const MpqArchiveFingerprint &fingerprint : MpqArchiveFingerprints) {
+		if (fingerprint.fileName != "DIABDAT.MPQ")
+			continue;
+		if (fingerprint.sizeBytes != 0 && fingerprint.sizeBytes != fileSize)
+			continue;
+		hasCandidate = true;
+		break;
+	}
+	if (!hasCandidate) {
+		LogInfo("MPQ database: no size-compatible DIABDAT fingerprint for {} bytes", fileSize);
+		return std::nullopt;
+	}
+
+	// Do not allocate a whole-archive buffer: hash the 500 MiB retail MPQ in
+	// 64 KiB chunks so this remains viable with the PS3's limited main memory.
+	LogInfo("MPQ database: calculating whole-file MD5 for {} ({} bytes)", mpqPath, fileSize);
+	const std::optional<std::string> digest = md5::CalculateFile(mpqPath.c_str());
+	if (!digest.has_value()) {
+		LogWarn("MPQ database: could not read DIABDAT.MPQ completely for fingerprinting");
+		return std::nullopt;
+	}
+
+	for (const MpqArchiveFingerprint &fingerprint : MpqArchiveFingerprints) {
+		if (fingerprint.fileName != "DIABDAT.MPQ" || fingerprint.md5.empty())
+			continue;
+		if (fingerprint.sizeBytes != 0 && fingerprint.sizeBytes != fileSize)
+			continue;
+		if (*digest == fingerprint.md5) {
+			LogInfo("MPQ database: matched {} ({})", fingerprint.fileName, fingerprint.provenance);
+			return fingerprint.profile;
+		}
+	}
+
+	LogInfo("MPQ database: unrecognized DIABDAT.MPQ size={} MD5={}", fileSize, *digest);
+	return std::nullopt;
+}
+
+bool LoadRetailPatchArchive(std::span<const std::string> paths)
+{
+	constexpr int RetailPatchMpqPriority = 1050;
+	const bool loaded = LoadMPQCaseVariants(paths, "Patch_rt", RetailPatchMpqPriority);
+	if (loaded)
+		LogInfo("MPQ database: mounted optional Patch_rt.mpq at priority {}", RetailPatchMpqPriority);
+	return loaded;
+}
+#endif
+
 std::vector<std::string> GetMPQSearchPaths()
 {
 	std::vector<std::string> paths;
@@ -605,6 +738,15 @@ void LoadAdditionalMpqOverlays(const std::vector<std::string> &paths)
 
 } // namespace
 
+const MpqReleaseProfileConfig &GetDetectedMpqReleaseProfile()
+{
+	for (const MpqReleaseProfileConfig &profile : MpqReleaseProfiles) {
+		if (profile.id == DetectedMpqReleaseProfile)
+			return profile;
+	}
+	return MpqReleaseProfiles.front();
+}
+
 void LoadCoreArchives()
 {
 	auto paths = GetMPQSearchPaths();
@@ -618,7 +760,7 @@ void LoadCoreArchives()
 #endif
 #endif
 	LoadMPQ(paths, "fonts", FontMpqPriority); // Extra fonts
-	HasHellfireMpq = FindMPQ(paths, "hellfire");
+	HasHellfireMpq = FindMPQCaseVariants(paths, "hellfire");
 }
 
 void LoadLanguageArchive()
@@ -635,18 +777,31 @@ void LoadGameArchives()
 	const std::vector<std::string> paths = GetMPQSearchPaths();
 	bool haveDiabdat = false;
 	bool haveSpawn = false;
+	DetectedMpqReleaseProfile = MpqReleaseProfileId::Unknown;
 
 #ifndef UNPACKED_MPQS
-	// DIABDAT.MPQ is uppercase on the original CD and the GOG version.
-	haveDiabdat = LoadMPQ(paths, "DIABDAT", MainMpqPriority, ".MPQ");
-#endif
-
-	if (!haveDiabdat) {
-		haveDiabdat = LoadMPQ(paths, "diabdat", MainMpqPriority);
-		if (!haveDiabdat) {
-			gbIsSpawn = haveSpawn = LoadMPQ(paths, "spawn", MainMpqPriority);
+	std::string diabdatPath;
+	haveDiabdat = LoadMPQCaseVariants(paths, "DIABDAT", MainMpqPriority, &diabdatPath);
+	if (haveDiabdat) {
+		const std::optional<MpqReleaseProfileId> profile = IdentifyMpqReleaseProfile(diabdatPath);
+		if (profile.has_value()) {
+			DetectedMpqReleaseProfile = *profile;
+			LogInfo("MPQ database: detected boot profile '{}'", GetDetectedMpqReleaseProfile().name);
+		} else {
+			LogInfo("MPQ database: generic boot profile selected for this DIABDAT.MPQ");
 		}
 	}
+#else
+	haveDiabdat = LoadMPQCaseVariants(paths, "DIABDAT", MainMpqPriority);
+#endif
+
+	if (!haveDiabdat)
+		gbIsSpawn = haveSpawn = LoadMPQCaseVariants(paths, "spawn", MainMpqPriority);
+
+#ifndef UNPACKED_MPQS
+	// Blizzard retail updates are separate overlays and do not rewrite DIABDAT.MPQ.
+	LoadRetailPatchArchive(paths);
+#endif
 
 	// Optional high-priority archive containing browser-generated H.264/PCM
 	// sidecars for PS3 Cell VDEC playback. Original game MPQs remain untouched.
@@ -668,13 +823,11 @@ void LoadGameArchives()
 	}
 
 #ifndef UNPACKED_MPQS
-	// In unpacked mode, all the hellfire data is in the hellfire directory.
-	LoadMPQ(paths, "hfbard", 8110);
-	LoadMPQ(paths, "hfbarb", 8120);
+	// Optional character packs from some Hellfire releases; accept CD filename casing.
+	LoadMPQCaseVariants(paths, "hfbard", 8110);
+	LoadMPQCaseVariants(paths, "hfbarb", 8120);
 
-	// Configured overlays sit above the base game, Hellfire and language MPQs,
-	// but below fonts.mpq and user mods. This lets localized CD archives such
-	// as diabger.mpq and hfger.mpq replace their original game resources.
+	// Configured archives sit above base/Hellfire/language MPQs and below fonts/mods.
 	LoadAdditionalMpqOverlays(paths);
 #endif
 }
@@ -682,7 +835,7 @@ void LoadGameArchives()
 void LoadHellfireArchives()
 {
 	const std::vector<std::string> paths = GetMPQSearchPaths();
-	LoadMPQ(paths, "hellfire", 8000);
+	LoadMPQCaseVariants(paths, "hellfire", 8000);
 
 #ifdef UNPACKED_MPQS
 	const std::string &hellfireDataPath = MpqArchives.at(8000);
@@ -692,9 +845,9 @@ void LoadHellfireArchives()
 	const bool hasVoice = FileExists(hellfireDataPath + "sfx/hellfire/cowsut1.wav")
 	    || FileExists(hellfireDataPath + "sfx/hellfire/cowsut1.mp3");
 #else
-	const bool hasMonk = LoadMPQ(paths, "hfmonk", 8100);
-	const bool hasMusic = LoadMPQ(paths, "hfmusic", 8200);
-	const bool hasVoice = LoadMPQ(paths, "hfvoice", 8500);
+	const bool hasMonk = LoadMPQCaseVariants(paths, "hfmonk", 8100);
+	const bool hasMusic = LoadMPQCaseVariants(paths, "hfmusic", 8200);
+	const bool hasVoice = LoadMPQCaseVariants(paths, "hfvoice", 8500);
 #endif
 
 	if (!hasMonk || !hasMusic || !hasVoice)

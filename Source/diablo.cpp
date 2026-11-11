@@ -87,6 +87,7 @@
 #include "nthread.h"
 #include "objects.h"
 #include "options.h"
+#include "engine/assets.hpp"
 #include "panels/console.hpp"
 #include "panels/info_box.hpp"
 #include "panels/partypanel.hpp"
@@ -1399,15 +1400,19 @@ void DiabloSplash()
 	}
 
 	if (*GetOptions().StartUp.splash == StartUpSplash::LogoAndTitleDialog) {
+		const MpqReleaseProfileConfig &mpqProfile = GetDetectedMpqReleaseProfile();
+		if (mpqProfile.skipBrokenLogoMovie) {
+			LogInfo("MPQ profile '{}': skipping known-broken original US CD logo.smk", mpqProfile.name);
+		} else {
 #ifdef __PS3__
-		LogInfo("PS3 splash: logo movie begin");
+			LogInfo("PS3 splash: logo movie begin");
 #endif
-		play_movie("gendata\\logo.smk", true);
+			play_movie("gendata\\logo.smk", true);
 #ifdef __PS3__
-		LogInfo("PS3 splash: logo movie returned");
+			LogInfo("PS3 splash: logo movie returned");
 #endif
+		}
 	}
-
 	auto &intro = gbIsHellfire ? GetOptions().StartUp.hellfireIntro : GetOptions().StartUp.diabloIntro;
 #ifdef __PS3__
 	// Temporary PS3 diagnostic override: make the Diablo intro play even if

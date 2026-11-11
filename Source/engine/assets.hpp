@@ -20,6 +20,7 @@
 
 #include "appfat.h"
 #include "game_mode.hpp"
+#include "engine/mpq_profiles.hpp"
 #include "headless_mode.hpp"
 #include "utils/file_util.h"
 #include "utils/language.h"
@@ -321,6 +322,8 @@ extern bool IsAssetIntegrityViolated;
  * (e.g. the towner TSVs) before entering multiplayer instead of hitting the in-game backstop.
  */
 [[nodiscard]] bool HasLooseLogicAssets();
+
+[[nodiscard]] const MpqReleaseProfileConfig &GetDetectedMpqReleaseProfile();
 
 void LoadCoreArchives();
 void LoadLanguageArchive();

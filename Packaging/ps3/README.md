@@ -191,6 +191,10 @@ allow a root-level log when the HDD targets cannot be opened. A missing log
 means the process did not reach the constructor or none of the local filesystem
 paths could be opened.
 
+## Automatic MPQ release detection
+
+The boot loader fingerprints DIABDAT.MPQ against a compiled release catalogue and applies a matching release profile. It recognizes the documented original US CD 1.00 archive and the European/Mac/GOG archive family. The US profile skips only its known-broken publisher logo movie; it does not skip the Diablo intro. Common filename casing is accepted, and the optional Patch_rt.mpq retail patch is mounted above the base archive. Unknown but valid releases remain playable with generic settings. See [MPQ_DATABASE.md](MPQ_DATABASE.md) for checksums, source coverage, and the fingerprint-generation helper.
+
 ## Current porting status
 
 This is an experimental build-and-boot port, not a claim of verified in-game
