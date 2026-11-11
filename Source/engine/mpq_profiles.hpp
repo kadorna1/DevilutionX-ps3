@@ -28,6 +28,7 @@ struct MpqReleaseProfileConfig {
 struct MpqArchiveFingerprint {
 	std::string_view fileName;
 	std::uint64_t sizeBytes; // Zero means no reliable exact size was published.
+	std::string_view md4;
 	std::string_view md5;
 	std::string_view sha1;
 	std::string_view sha256;
@@ -154,6 +155,7 @@ inline constexpr std::array<MpqArchiveFingerprint, 2> MpqArchiveFingerprints {{
 	{
 		"DIABDAT.MPQ",
 		517501242ULL,
+		"",
 		"68f049866b44688a7af65ba766bef75a",
 		"fe35cba676a0a194ccdf1d4357de49dff252fa40",
 		"6bc120a603fdb383ff91f374e7db599765d6230d81e5a4c1b33f8254911774e7",
@@ -166,6 +168,7 @@ inline constexpr std::array<MpqArchiveFingerprint, 2> MpqArchiveFingerprints {{
 	{
 		"DIABDAT.MPQ",
 		0,
+		"3780aff2929ab60711aa1f82e509d309",
 		"011bc6518e6166206231080a4440b373",
 		"",
 		"",

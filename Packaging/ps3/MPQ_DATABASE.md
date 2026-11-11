@@ -13,6 +13,8 @@ The US checksum set also includes CRC32 855951d6, CRC64 91eb406ca29379c7, SHA-1 
 
 The EU/Mac/GOG MD5 is recorded by the Freeablo maintainer in [Freeablo issue #427](https://github.com/wheybags/freeablo/issues/427). The maintainer says the GoG archive retained that hash, the only DIABDAT difference from the US archive was the broken logo.smk in the US version, and later retail updates were distributed as Patch_rt.mpq rather than changing DIABDAT.MPQ.
 
+A community checksum report for the same EU/Mac/GOG MD5 also lists MD4 3780aff2929ab60711aa1f82e509d309, CRC32 7c9d3580 and SHA-1 5cfd971abb25602731fef0c9b43eb7d7447f296e. These are stored as corroborating metadata, not used for boot-time matching, because the report is community-submitted rather than an independently published vendor manifest ([GBAtemp checksum report](https://gbatemp.net/threads/diablo-nx-nintendo-switch-port-of-devilutionx-diablo.542414/page-2)).
+
 The game streams the whole-file MD5 in fixed 64 KiB chunks. It never loads the 500 MiB archive into memory. If the checksum is not recognized, the archive is still loaded normally and the generic profile is selected. The log records the unknown archive's size and MD5 so an exact new release can be verified and added later.
 
 ## Distribution coverage and what is not fingerprinted yet
