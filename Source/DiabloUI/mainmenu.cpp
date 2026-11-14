@@ -20,6 +20,9 @@
 #include "game_mode.hpp"
 #include "utils/language.h"
 #include "utils/ui_fwd.h"
+#ifdef __PS3__
+#include "utils/log.hpp"
+#endif
 
 namespace devilution {
 namespace {
@@ -34,16 +37,25 @@ _mainmenu_selections MainMenuResult;
 void UiMainMenuSelect(size_t value)
 {
 	MainMenuResult = (_mainmenu_selections)vecMenuItems[value]->m_value;
+#ifdef __PS3__
+	LogInfo("PS3 menu input: selected main-menu item index={} result={}", value, static_cast<int>(MainMenuResult));
+#endif
 }
 
 #ifndef NOEXIT
 void MainmenuEsc()
 {
 	const std::size_t last = vecMenuItems.size() - 1;
+#ifdef __PS3__
+	LogInfo("PS3 menu input: ESC/back received; current_item={} exit_item={}", SelectedItem, last);
+#endif
 	if (SelectedItem == last) {
 		UiMainMenuSelect(last);
 	} else {
 		SelectedItem = last;
+#ifdef __PS3__
+		LogInfo("PS3 menu input: ESC/back moved selection to Exit Diablo; awaiting confirmation");
+#endif
 	}
 }
 #endif
@@ -108,6 +120,9 @@ void mainmenu_restart_repintro()
 bool UiMainMenuDialog(const char *name, _mainmenu_selections *pdwResult, int attractTimeOut)
 {
 	MainMenuResult = MAINMENU_NONE;
+#ifdef __PS3__
+	LogInfo("PS3 menu: main-menu dialog opened spawn={} hellfire={} attract_timeout={}", gbIsSpawn, gbIsHellfire, attractTimeOut);
+#endif
 	while (MainMenuResult == MAINMENU_NONE) {
 		mainmenu_attract_time_out = attractTimeOut;
 		MainmenuLoad(name);
@@ -126,6 +141,9 @@ bool UiMainMenuDialog(const char *name, _mainmenu_selections *pdwResult, int att
 	}
 
 	*pdwResult = MainMenuResult;
+#ifdef __PS3__
+	LogInfo("PS3 menu: main-menu dialog returning result={}", static_cast<int>(MainMenuResult));
+#endif
 	return true;
 }
 
