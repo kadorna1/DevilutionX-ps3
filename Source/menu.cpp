@@ -25,6 +25,9 @@
 #include "pfile.h"
 #include "storm/storm_net.hpp"
 #include "utils/language.h"
+#ifdef __PS3__
+#include "utils/log.hpp"
+#endif
 
 namespace devilution {
 
@@ -67,6 +70,9 @@ bool InitMenu(_selhero_selections type)
 		return true;
 
 	success = StartGame(type != SELHERO_CONTINUE, type != SELHERO_CONNECT);
+#ifdef __PS3__
+	LogInfo("PS3 menu: StartGame hero-selection-type={} returned success={}", static_cast<int>(type), success);
+#endif
 	if (success)
 		RefreshMusic();
 
@@ -139,7 +145,13 @@ bool mainmenu_select_hero_dialog(GameData *gameData)
 		    &dlgresult,
 		    &gSaveNumber);
 	}
+#ifdef __PS3__
+	LogInfo("PS3 menu: hero dialog returned selection={} load_game={}", static_cast<int>(dlgresult), gbLoadGame);
+#endif
 	if (dlgresult == SELHERO_PREVIOUS) {
+#ifdef __PS3__
+		LogInfo("PS3 menu: hero dialog backed out to the previous menu");
+#endif
 		return false;
 	}
 
@@ -162,6 +174,9 @@ void mainmenu_loop()
 
 	RefreshMusic();
 	done = false;
+#ifdef __PS3__
+	LogInfo("PS3 menu: mainmenu_loop entered spawn={} hellfire={} active={}", gbIsSpawn, gbIsHellfire, gbActive);
+#endif
 
 	do {
 		_mainmenu_selections menu = MAINMENU_NONE;
@@ -170,18 +185,34 @@ void mainmenu_loop()
 		else if (!UiMainMenuDialog(gszProductName, &menu, 30))
 			app_fatal(_("Unable to display mainmenu"));
 
+#ifdef __PS3__
+		LogInfo("PS3 menu: mainmenu_loop received result={}", static_cast<int>(menu));
+#endif
 		switch (menu) {
 		case MAINMENU_NONE:
 			break;
-		case MAINMENU_SINGLE_PLAYER:
-			if (!InitSinglePlayerMenu())
+		case MAINMENU_SINGLE_PLAYER: {
+			const bool initialized = InitSinglePlayerMenu();
+#ifdef __PS3__
+			LogInfo("PS3 menu: single-player menu returned initialized={}", initialized);
+#endif
+			if (!initialized)
 				done = true;
 			break;
-		case MAINMENU_MULTIPLAYER:
-			if (!InitMultiPlayerMenu())
+		}
+		case MAINMENU_MULTIPLAYER: {
+			const bool initialized = InitMultiPlayerMenu();
+#ifdef __PS3__
+			LogInfo("PS3 menu: multiplayer menu returned initialized={}", initialized);
+#endif
+			if (!initialized)
 				done = true;
 			break;
+		}
 		case MAINMENU_ATTRACT_MODE:
+#ifdef __PS3__
+			LogInfo("PS3 menu: attract mode selected; intro_available={} active={}", HaveIntro(), gbActive);
+#endif
 			if (gbIsSpawn && !HaveIntro())
 				done = false;
 			else if (gbActive)
@@ -194,6 +225,9 @@ void mainmenu_loop()
 			UiSupportDialog();
 			break;
 		case MAINMENU_EXIT_DIABLO:
+#ifdef __PS3__
+			LogInfo("PS3 menu: explicit Exit Diablo selection");
+#endif
 			mainmenu_wait_for_button_sound();
 			done = true;
 			break;
@@ -204,6 +238,9 @@ void mainmenu_loop()
 	} while (!done);
 
 	music_stop();
+#ifdef __PS3__
+	LogInfo("PS3 menu: mainmenu_loop leaving");
+#endif
 }
 
 } // namespace devilution
