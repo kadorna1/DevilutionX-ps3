@@ -1419,11 +1419,18 @@ void DiabloSplash()
 	// a previous Once setting has already been persisted as Off. This lets us
 	// isolate intro-FMV playback from the title-screen failure.
 	const int configuredIntroOption = static_cast<int>(*intro);
-	if (!gbIsHellfire) {
+	if (!gbIsHellfire && !gbIsSpawn) {
 		intro.SetValue(StartUpIntro::On);
 		LogInfo("PS3 splash: forcing Diablo intro On for diagnostic playback; configured option={}", configuredIntroOption);
+	} else if (gbIsSpawn && !gbIsHellfire) {
+		LogInfo("PS3 splash: not forcing the full-game intro for the Spawn/shareware archive");
 	}
 	LogInfo("PS3 splash: intro option={}", static_cast<int>(*intro));
+#endif
+#ifdef __PS3__
+	if (gbIsSpawn && !gbIsHellfire && !HaveIntro()) {
+		LogInfo("PS3 splash: skipping Diablo intro because the Spawn archive has no gendata\\diablo1.smk");
+	} else
 #endif
 	if (*intro != StartUpIntro::Off) {
 #ifdef __PS3__
