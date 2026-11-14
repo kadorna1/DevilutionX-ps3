@@ -39,6 +39,27 @@ bool IsRightStickAxis(Uint8 axis)
 
 bool PS3HandleInputEvent(const SDL_Event &event)
 {
+	switch (event.type) {
+	case SDL_JOYBUTTONDOWN:
+	case SDL_JOYBUTTONUP:
+		LogInfo("PS3 input: raw joystick button {} joystick={} button={} state={}",
+		    event.type == SDL_JOYBUTTONDOWN ? "down" : "up",
+		    event.jbutton.which, event.jbutton.button, static_cast<int>(event.jbutton.state));
+		break;
+	case SDL_KEYDOWN:
+		LogInfo("PS3 input: raw key down symbol={} repeat={}",
+		    static_cast<int>(event.key.keysym.sym), static_cast<int>(event.key.repeat));
+		break;
+	case SDL_MOUSEBUTTONDOWN:
+	case SDL_MOUSEBUTTONUP:
+		LogInfo("PS3 input: raw mouse button {} button={} position=({}, {})",
+		    event.type == SDL_MOUSEBUTTONDOWN ? "down" : "up",
+		    static_cast<int>(event.button.button), event.button.x, event.button.y);
+		break;
+	default:
+		break;
+	}
+
 #if defined(JOY_BUTTON_RIGHTSTICK)
 	if (event.type == SDL_JOYBUTTONDOWN && event.jbutton.button == JOY_BUTTON_RIGHTSTICK) {
 		if (!RightStickToggleHeld) {
