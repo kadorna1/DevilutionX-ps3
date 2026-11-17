@@ -30,10 +30,9 @@
 #ifdef __PS3__
 #include <algorithm>
 #include <atomic>
-#include <cstdio>
+#include <stdio.h>
 #include <cstring>
 #include <cstdint>
-#include <mutex>
 #include <ppu-lv2.h>
 #include <lv2/sysfs.h>
 #include <sys/process.h>
@@ -50,14 +49,20 @@ namespace {
 
 s32 PS3LogFd = -1;
 bool PS3LogRuntimeReady = false;
+std::atomic_flag PS3LogLock = ATOMIC_FLAG_INIT;
 
 void PS3RawWriteToFd(s32 fd, const char *text, u64 length);
 s32 PS3SysLv2FsFsync(s32 fd);
 
-std::mutex &PS3LogMutex()
+void PS3AcquireLogLock()
 {
-	static std::mutex mutex;
-	return mutex;
+	while (PS3LogLock.test_and_set(std::memory_order_acquire)) {
+	}
+}
+
+void PS3ReleaseLogLock()
+{
+	PS3LogLock.clear(std::memory_order_release);
 }
 
 void PS3WriteLogLine(const char *text, u64 length)
@@ -70,16 +75,18 @@ void PS3WriteLogLine(const char *text, u64 length)
 		PS3RawWriteToFd(PS3LogFd, text, length);
 		return;
 	}
-	const std::lock_guard<std::mutex> lock(PS3LogMutex());
+	PS3AcquireLogLock();
 	PS3RawWriteToFd(PS3LogFd, text, length);
+	PS3ReleaseLogLock();
 }
 
 void PS3FlushLog()
 {
 	if (PS3LogFd < 0)
 		return;
-	const std::lock_guard<std::mutex> lock(PS3LogMutex());
+	PS3AcquireLogLock();
 	(void)PS3SysLv2FsFsync(PS3LogFd);
+	PS3ReleaseLogLock();
 }
 
 s32 PS3SysLv2FsOpen(const char *path, s32 flags, s32 *fd, u32 mode)
@@ -162,7 +169,7 @@ void PS3WriteBootLog(const char *message)
 	}
 
 	char line[4096];
-	const int length = std::snprintf(line, sizeof(line), "[PS3][BOOT] %s\n", message != nullptr ? message : "");
+	const int length = snprintf(line, sizeof(line), "[PS3][BOOT] %s\n", message != nullptr ? message : "");
 	if (length > 0)
 		PS3WriteLogLine(line, static_cast<u64>(std::min<std::size_t>(static_cast<std::size_t>(length), sizeof(line) - 1)));
 }
@@ -170,7 +177,7 @@ void PS3WriteBootLog(const char *message)
 void PS3LogOutput(void *, int category, SDL_LogPriority priority, const char *message)
 {
 	char line[4096];
-	const int prefixLength = std::snprintf(line, sizeof(line), "[SDL][category=%d][priority=%d] ",
+	const int prefixLength = snprintf(line, sizeof(line), "[SDL][category=%d][priority=%d] ",
 	    category, static_cast<int>(priority));
 	if (prefixLength < 0)
 		return;
@@ -262,7 +269,7 @@ extern "C" void PS3LuaRawBootLogStatus(int status, int callbackReturned)
 	if (!PS3ShouldWriteLuaTrace())
 		return;
 	char line[160];
-	const int length = std::snprintf(line, sizeof(line),
+	const int length = snprintf(line, sizeof(line),
 	    "[PS3][BOOT] Lua protected-call lj.status=%d callback_returned=%d\n",
 	    status, callbackReturned);
 	if (length > 0)
