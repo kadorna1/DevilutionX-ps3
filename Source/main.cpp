@@ -28,6 +28,7 @@
 #include "diablo.h"
 
 #ifdef __PS3__
+#include <algorithm>
 #include <atomic>
 #include <cstdio>
 #include <cstring>
@@ -47,6 +48,9 @@ SYS_PROCESS_PARAM(1001, 0x100000);
 namespace {
 
 s32 PS3LogFd = -1;
+
+void PS3RawWriteToFd(s32 fd, const char *text, u64 length);
+s32 PS3SysLv2FsFsync(s32 fd);
 
 std::mutex &PS3LogMutex()
 {
