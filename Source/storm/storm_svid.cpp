@@ -47,7 +47,7 @@ namespace devilution {
 #if defined(__PS3__) && defined(DEVILUTIONX_PS3_VERBOSE_FMV_TRACE)
 #define PS3_FMV_TRACE(...) LogInfo(__VA_ARGS__)
 #else
-#define PS3_FMV_TRACE(...) ((void)0)
+#define PS3_FMV_TRACE(...) do { if constexpr (false) LogInfo(__VA_ARGS__); } while (0)
 #endif
 
 namespace {
