@@ -32,6 +32,7 @@
 #include <atomic>
 #include <cstdio>
 #include <cstring>
+#include <cstdint>
 #include <mutex>
 #include <ppu-lv2.h>
 #include <lv2/sysfs.h>
