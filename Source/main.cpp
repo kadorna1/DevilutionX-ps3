@@ -28,6 +28,10 @@
 #include "diablo.h"
 
 #ifdef __PS3__
+#include <atomic>
+#include <cstdio>
+#include <cstring>
+#include <mutex>
 #include <ppu-lv2.h>
 #include <lv2/sysfs.h>
 #include <sys/process.h>
@@ -43,6 +47,28 @@ SYS_PROCESS_PARAM(1001, 0x100000);
 namespace {
 
 s32 PS3LogFd = -1;
+
+std::mutex &PS3LogMutex()
+{
+	static std::mutex mutex;
+	return mutex;
+}
+
+void PS3WriteLogLine(const char *text, u64 length)
+{
+	if (PS3LogFd < 0 || text == nullptr || length == 0)
+		return;
+	const std::lock_guard<std::mutex> lock(PS3LogMutex());
+	PS3RawWriteToFd(PS3LogFd, text, length);
+}
+
+void PS3FlushLog()
+{
+	if (PS3LogFd < 0)
+		return;
+	const std::lock_guard<std::mutex> lock(PS3LogMutex());
+	(void)PS3SysLv2FsFsync(PS3LogFd);
+}
 
 s32 PS3SysLv2FsOpen(const char *path, s32 flags, s32 *fd, u32 mode)
 {
@@ -115,23 +141,32 @@ void PS3RawWriteNumber(s32 value)
 
 void PS3WriteBootLog(const char *message)
 {
-	PS3RawWrite("[PS3][BOOT] ");
-	PS3RawWrite(message);
-	PS3RawWrite("\n");
+	char line[4096];
+	const int length = std::snprintf(line, sizeof(line), "[PS3][BOOT] %s\n", message != nullptr ? message : "");
+	if (length > 0)
+		PS3WriteLogLine(line, static_cast<u64>(std::min<std::size_t>(static_cast<std::size_t>(length), sizeof(line) - 1)));
 }
 
 void PS3LogOutput(void *, int category, SDL_LogPriority priority, const char *message)
 {
-	PS3RawWrite("[SDL][category=");
-	PS3RawWriteNumber(category);
-	PS3RawWrite("][priority=");
-	PS3RawWriteNumber(static_cast<s32>(priority));
-	PS3RawWrite("] ");
-	PS3RawWrite(message != nullptr ? message : "");
-	PS3RawWrite("\n");
-	if (PS3LogFd >= 0)
-		(void)PS3SysLv2FsFsync(PS3LogFd);
+	char line[4096];
+	const int prefixLength = std::snprintf(line, sizeof(line), "[SDL][category=%d][priority=%d] ",
+	    category, static_cast<int>(priority));
+	if (prefixLength < 0)
+		return;
 
+	std::size_t length = std::min<std::size_t>(static_cast<std::size_t>(prefixLength), sizeof(line) - 2);
+	const char *body = message != nullptr ? message : "";
+	const std::size_t bodyLength = std::min<std::size_t>(std::strlen(body), sizeof(line) - length - 2);
+	std::memcpy(line + length, body, bodyLength);
+	length += bodyLength;
+	line[length++] = '\n';
+	PS3WriteLogLine(line, static_cast<u64>(length));
+
+	// Normal diagnostics stay in the filesystem cache. Force durable storage
+	// only for errors and at orderly shutdown, never for every frame/audio log.
+	if (priority >= SDL_LOG_PRIORITY_ERROR)
+		PS3FlushLog();
 }
 
 void InitializePS3Log()
@@ -189,24 +224,35 @@ __attribute__((constructor(103))) void PS3EarlyLogConstructor()
 
 } // namespace
 
+bool PS3ShouldWriteLuaTrace()
+{
+	static std::atomic<std::uint32_t> traceMessageCount { 0 };
+	const std::uint32_t count = traceMessageCount.fetch_add(1, std::memory_order_relaxed) + 1;
+	return count <= 64 || (count & 0x3FFU) == 0;
+}
+
 extern "C" void PS3LuaRawBootLogNoSync(const char *message)
 {
-	PS3WriteBootLog(message);
+	if (PS3ShouldWriteLuaTrace())
+		PS3WriteBootLog(message);
 }
 
 extern "C" void PS3LuaRawBootLogStatus(int status, int callbackReturned)
 {
-	PS3RawWrite("[PS3][BOOT] Lua protected-call lj.status=");
-	PS3RawWriteNumber(status);
-	PS3RawWrite(" callback_returned=");
-	PS3RawWriteNumber(callbackReturned);
-	PS3RawWrite("\n");
+	if (!PS3ShouldWriteLuaTrace())
+		return;
+	char line[160];
+	const int length = std::snprintf(line, sizeof(line),
+	    "[PS3][BOOT] Lua protected-call lj.status=%d callback_returned=%d\n",
+	    status, callbackReturned);
+	if (length > 0)
+		PS3WriteLogLine(line, static_cast<u64>(std::min<std::size_t>(static_cast<std::size_t>(length), sizeof(line) - 1)));
 }
 
 extern "C" void PS3LuaRawBootLogSync()
 {
-	if (PS3LogFd >= 0)
-		(void)PS3SysLv2FsFsync(PS3LogFd);
+	// Lua protected-call tracing is sampled. The log is synchronized once
+	// DiabloMain has completed, not on every protected call.
 }
 
 extern "C" void PS3LuaRawBootLog(const char *message)
@@ -260,6 +306,7 @@ extern "C" int main(int argc, char **argv)
 	const int result = devilution::DiabloMain(argc, argv);
 #ifdef __PS3__
 	SDL_Log("PS3 boot: DiabloMain returned with status %d", result);
+	PS3FlushLog();
 #endif
 #ifdef GPERF_HEAP_MAIN
 	HeapProfilerStop();
