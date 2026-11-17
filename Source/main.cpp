@@ -48,6 +48,7 @@ SYS_PROCESS_PARAM(1001, 0x100000);
 namespace {
 
 s32 PS3LogFd = -1;
+bool PS3LogRuntimeReady = false;
 
 void PS3RawWriteToFd(s32 fd, const char *text, u64 length);
 s32 PS3SysLv2FsFsync(s32 fd);
@@ -62,6 +63,12 @@ void PS3WriteLogLine(const char *text, u64 length)
 {
 	if (PS3LogFd < 0 || text == nullptr || length == 0)
 		return;
+	// The priority-103 constructor runs before Newlib's priority-104 setup.
+	// Keep its initial boot messages on the raw syscall-only path.
+	if (!PS3LogRuntimeReady) {
+		PS3RawWriteToFd(PS3LogFd, text, length);
+		return;
+	}
 	const std::lock_guard<std::mutex> lock(PS3LogMutex());
 	PS3RawWriteToFd(PS3LogFd, text, length);
 }
@@ -145,6 +152,14 @@ void PS3RawWriteNumber(s32 value)
 
 void PS3WriteBootLog(const char *message)
 {
+	// The early constructor must not depend on Newlib/stdio initialization.
+	if (!PS3LogRuntimeReady) {
+		PS3RawWrite("[PS3][BOOT] ");
+		PS3RawWrite(message != nullptr ? message : "");
+		PS3RawWrite("\n");
+		return;
+	}
+
 	char line[4096];
 	const int length = std::snprintf(line, sizeof(line), "[PS3][BOOT] %s\n", message != nullptr ? message : "");
 	if (length > 0)
@@ -277,6 +292,7 @@ extern "C" int main(int argc, char **argv)
 {
 #ifdef __PS3__
 	InitializePS3Log();
+	PS3LogRuntimeReady = true;
 	SDL_LogSetOutputFunction(PS3LogOutput, nullptr);
 	SDL_LogSetAllPriority(SDL_LOG_PRIORITY_VERBOSE);
 	PS3WriteBootLog("main() entered");
