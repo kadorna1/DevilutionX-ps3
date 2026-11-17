@@ -71,12 +71,15 @@ bool PushAulibDecoder::seekToTime([[maybe_unused]] std::chrono::microseconds pos
 int PushAulibDecoder::doDecoding(float buf[], int len, bool &callAgain)
 {
 	callAgain = false;
-#ifdef __PS3__
+#if defined(__PS3__) && defined(DEVILUTIONX_PS3_VERBOSE_FMV_TRACE)
 	static std::atomic<uint32_t> callbackCount { 0 };
 	const uint32_t callbackId = ++callbackCount;
 	const bool traceCallback = callbackId <= 32 || callbackId % 128 == 0;
 	if (traceCallback)
 		LogInfo("PS3 FMV AUDIO CALLBACK: begin id={} requested_floats={}", callbackId, len);
+#elif defined(__PS3__)
+	constexpr uint32_t callbackId = 0;
+	constexpr bool traceCallback = false;
 #endif
 
 	constexpr auto WriteFloats = [](PushAulibDecoder::AudioQueueItem &item, float *out, unsigned count) {
